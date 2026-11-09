@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>太阳系变量实验室 · 3D</title>
+<style>
+  /* 单文件 · 零外部 CDN · 零后端请求（C3）· 无 WebGL 时自动用 2D Canvas 顶视图（C4） */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0B1B2C;color:#fff;font-family:"Microsoft YaHei","微软雅黑",system-ui,sans-serif}
+  #app{display:flex;height:100vh;flex-wrap:wrap}
+  #stage{flex:1 1 560px;position:relative;min-width:320px;background:#08131F;overflow:hidden}
+  #stage canvas{width:100%;height:100%;display:block;touch-action:none}
+  #hud{position:absolute;left:14px;top:14px;pointer-events:none;font-size:13px;line-height:1.7}
+  #hud .k{color:#7E9AAE;font-size:11px;letter-spacing:.08em}
+  #hud .v{color:#FFD84D;font-weight:800;font-size:22px}
+  #hud .v2{color:#4ADE9B;font-weight:800;font-size:15px}
+  #hint{position:absolute;left:14px;bottom:12px;font-size:12px;color:#7E9AAE;pointer-events:none}
+  #mode{position:absolute;right:14px;top:14px;font-size:11px;color:#7E9AAE;border:1px solid #2A4E77;border-radius:20px;padding:3px 10px;pointer-events:none}
+  #panel{flex:0 0 380px;background:#10233A;border-left:1px solid #2A4E77;padding:22px;overflow-y:auto}
+  .chip{display:inline-block;background:#16345A;border:1px solid #2A4E77;border-radius:24px;padding:4px 14px;font-size:13px;color:#B9D2E6;margin-right:8px}
+  .chip.on{background:#2E7CF6;border-color:#2E7CF6;color:#fff;font-weight:700}
+  h2{font-size:20px;color:#FFD84D;margin:14px 0 10px}
+  p{font-size:15px;line-height:1.85;color:#B9D2E6;margin-bottom:10px}
+  .var{background:rgba(11,27,44,.55);border-radius:12px;padding:14px 16px;margin:10px 0}
+  .var.locked{opacity:.42}
+  .var label{display:flex;justify-content:space-between;font-size:14px;color:#C7DCEC;margin-bottom:8px}
+  input[type=range]{width:100%;accent-color:#22D3EE}
+  button{font-family:inherit;font-size:15px;font-weight:700;color:#fff;background:#2E7CF6;border:none;border-radius:24px;padding:10px 24px;cursor:pointer;margin:4px 6px 4px 0}
+  button.ghost{background:transparent;border:1px solid #2A4E77;color:#B9D2E6}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button:hover:not(:disabled){background:#22D3EE;color:#123046}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  th{background:#16345A;color:#C7DCEC;padding:7px 8px;text-align:left;font-weight:600}
+  td{border-bottom:1px solid #2A4E77;padding:7px 8px;color:#B9D2E6}
+  .yes{color:#4ADE9B;font-weight:700}
+  .no{color:#FF7A6B;font-weight:700}
+  #steps{display:flex;gap:6px;margin-bottom:6px}
+  #steps i{flex:1;height:5px;border-radius:99px;background:#2A4E77}
+  #steps i.on{background:#22D3EE}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="mode">3D</div>
+    <div id="hud">
+      <div class="k">表面温度</div>
+      <div class="v" id="hudT">—</div>
+      <div class="k">宜居指数</div>
+      <div class="v2" id="hudH">—</div>
+    </div>
+    <div id="hint">拖动旋转视角 · 滚轮缩放</div>
+  </div>
+  <div id="panel">
+    <div id="steps"><i></i><i></i><i></i><i></i><i></i></div>
+    <div id="phaseBody"></div>
+  </div>
+</div>
+<script>
+(function(){
+  "use strict";
+  var ACTIVITY_ID = "var-lab-3d";
+  var session = { sessionId:null, studentId:null, ready:false, level:null };
+  window.addEventListener("message", function(e){
+    if (!e.data || e.data.type !== "dreamcity:host:init") return;
+    session.sessionId = e.data.sessionId;
+    session.studentId = e.data.studentId || null;
+    session.level = e.data.level || null;
+    session.ready = true;
+    render();
+  });
+  function post(payload){
+    if (!session.ready) return;
+    parent.postMessage({
+      type:"dreamcity:activity:result", activityId:ACTIVITY_ID,
+      sessionId:session.sessionId, studentId:session.studentId,
+      payload:payload, visibility:"VIS_L1", ts:Date.now()
+    }, "*");
+  }
+
+  /* ── 级别权限：三级别变量权限不同 ───────────────────────────
+     L1 只给一个变量；L2 两个；L3 三个 + 相关≠因果的追问 */
+  function levelOf(){
+    if (session.level === "GRADE_L2") return 2;
+    if (session.level === "GRADE_L3") return 3;
+    return 1;
+  }
+  var LV = levelOf();
+  var ALLOWED = { dist:true, bright: LV>=2, albedo: LV>=3 };
+
+  /* ── 物理模型（与 2D 版完全一致）─────────────────────────────
+     T ∝ P^0.25 / √d ：T = 288 × P^0.25 / √d （K） */
+  var dist = 1.0, bright = 1.0, albedo = 0.30;
+  function temperature(d, p, a){
+    var t = 288 * Math.pow(p, 0.25) / Math.sqrt(d);
+    return t * (1 - a * 0.35);
+  }
+  function habitability(d, p, a){
+    var t = temperature(d,p,a);
+    var x = Math.abs(t - 288) / 45;
+    return Math.max(0, Math.round((1 - x) * 100));
+  }
+
+  /* ── 状态 ──────────────────────────────────────────────────── */
+  var PHASES = ["导入","预测","实验","记录","收尾"];
+  var phaseIdx = 0;
+  var prediction = null, records = [], observations = 0, badges = [];
+
+  /* ── 场景参数（3D 与 2D 共用同一套物理量）───────────────────── */
+  var ORBIT_BASE = 2.35;      // 距离 d = 1 时的轨道半径（世界单位）
+  var SUN_R = 0.62;
+  var EARTH_R = 0.30;
+  var CLOUD_R = EARTH_R * 1.16;
+
+  function sunRadius(){ return SUN_R * (0.75 + 0.35 * bright); }
+  function orbitRadius(){ return ORBIT_BASE * dist; }
+  function earthPos(angle){
+    var r = orbitRadius();
+    return [ r * Math.cos(angle), 0, r * Math.sin(angle) ];
+  }
+
+  /** 相机位置：绕原点转，仰角受限 */
+  function camEye(cam){
+    var ce = Math.cos(cam.el), se = Math.sin(cam.el);
+    return [ cam.dist * ce * Math.sin(cam.az), cam.dist * se, cam.dist * ce * Math.cos(cam.az) ];
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     3D 渲染器 —— 原生 WebGL，不引任何外部库（C3）
+     ══════════════════════════════════════════════════════════ */
+
+  /* ── 矩阵：列主序，与 WebGL / GLSL 一致 ──────────────────── */
+  function m4mul(A, B, out){
+    out = out || new Float32Array(16);
+    for (var c = 0; c < 4; c++){
+      for (var r = 0; r < 4; r++){
+        var s = 0;
+        for (var k = 0; k < 4; k++) s += A[k*4+r] * B[c*4+k];
+        out[c*4+r] = s;
+      }
+    }
+    return out;
+  }
+  function m4perspective(fovy, aspect, near, far){
+    var f = 1 / Math.tan(fovy/2), nf = 1/(near-far);
+    return new Float32Array([
+      f/aspect,0,0,0,
+      0,f,0,0,
+      0,0,(far+near)*nf,-1,
+      0,0,2*far*near*nf,0
+    ]);
+  }
+  function m4lookAt(eye, center, up){
+    var z = norm3(sub3(eye, center));
+    var x = norm3(cross3(up, z));
+    var y = cross3(z, x);
+    return new Float32Array([
+      x[0],y[0],z[0],0,
+      x[1],y[1],z[1],0,
+      x[2],y[2],z[2],0,
+      -dot3(x,eye),-dot3(y,eye),-dot3(z,eye),1
+    ]);
+  }
+  /** 平移 + 均匀缩放（球体只需要这两种） */
+  function m4model(tx, ty, tz, s){
+    return new Float32Array([
+      s,0,0,0,
+      0,s,0,0,
+      0,0,s,0,
+      tx,ty,tz,1
+    ]);
+  }
+  function sub3(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+  function dot3(a,b){ return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+  function cross3(a,b){
+    return [ a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0] ];
+  }
+  function norm3(a){
+    var l = Math.sqrt(dot3(a,a)) || 1;
+    return [a[0]/l, a[1]/l, a[2]/l];
+  }
+
+  /* ── 几何：UV 球 ─────────────────────────────────────────── */
+  function sphereMesh(seg, rings){
+    var pos = [], nrm = [], idx = [];
+    for (var y = 0; y <= rings; y++){
+      var phi = (y / rings) * Math.PI;
+      var sp = Math.sin(phi), cp = Math.cos(phi);
+      for (var x = 0; x <= seg; x++){
+        var th = (x / seg) * Math.PI * 2;
+        var nx = sp * Math.cos(th), ny = cp, nz = sp * Math.sin(th);
+        pos.push(nx, ny, nz);
+        nrm.push(nx, ny, nz);
+      }
+    }
+    for (var y2 = 0; y2 < rings; y2++){
+      for (var x2 = 0; x2 < seg; x2++){
+        var a = y2*(seg+1)+x2, b = a+seg+1;
+        idx.push(a, b, a+1, b, b+1, a+1);
+      }
+    }
+    return { pos: new Float32Array(pos), nrm: new Float32Array(nrm), idx: new Uint16Array(idx) };
+  }
+
+  /** 圆环线（轨道） */
+  function ringMesh(radius, seg){
+    var p = [];
+    for (var i = 0; i <= seg; i++){
+      var th = (i / seg) * Math.PI * 2;
+      p.push(Math.cos(th)*radius, 0, Math.sin(th)*radius);
+    }
+    return new Float32Array(p);
+  }
+
+  /** 星空：固定种子的随机点，保证每次打开位置一样 */
+  function starMesh(n){
+    var p = [], seed = 20260902;
+    function rnd(){
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    }
+    for (var i = 0; i < n; i++){
+      var u = rnd()*2-1, th = rnd()*Math.PI*2, r = 26 + rnd()*8;
+      var s = Math.sqrt(1 - u*u);
+      p.push(s*Math.cos(th)*r, u*r, s*Math.sin(th)*r);
+    }
+    return new Float32Array(p);
+  }
+
+  var VS_SPHERE = [
+    "attribute vec3 aPos;",
+    "attribute vec3 aNormal;",
+    "uniform mat4 uMVP;",
+    "uniform mat4 uModel;",
+    "uniform mat3 uNormalMat;",
+    "varying vec3 vN;",
+    "void main(){",
+    "  vN = normalize(uNormalMat * aNormal);",
+    "  gl_Position = uMVP * vec4(aPos, 1.0);",
+    "}"
+  ].join("\n");
+
+  var FS_SPHERE = [
+    "precision mediump float;",
+    "varying vec3 vN;",
+    "uniform vec3 uColor;",
+    "uniform vec3 uLightDir;",
+    "uniform float uEmissive;",
+    "uniform float uAlpha;",
+    "void main(){",
+    "  vec3 n = normalize(vN);",
+    "  float d = max(dot(n, normalize(uLightDir)), 0.0);",
+    "  vec3 lit = uColor * (0.16 + 0.84 * d);",
+    "  vec3 c = mix(lit, uColor, uEmissive);",
+    "  gl_FragColor = vec4(c, uAlpha);",
+    "}"
+  ].join("\n");
+
+  var VS_FLAT = [
+    "attribute vec3 aPos;",
+    "uniform mat4 uMVP;",
+    "uniform float uPointSize;",
+    "void main(){",
+    "  gl_Position = uMVP * vec4(aPos, 1.0);",
+    "  gl_PointSize = uPointSize;",
+    "}"
+  ].join("\n");
+
+  var FS_FLAT = [
+    "precision mediump float;",
+    "uniform vec4 uColor;",
+    "void main(){ gl_FragColor = uColor; }"
+  ].join("\n");
+
+  function compile(gl, type, src){
+    var sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      var log = gl.getShaderInfoLog(sh);
+      gl.deleteShader(sh);
+      throw new Error("着色器编译失败: " + log);
+    }
+    return sh;
+  }
+  function program(gl, vsSrc, fsSrc){
+    var p = gl.createProgram();
+    gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vsSrc));
+    gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fsSrc));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      throw new Error("着色器链接失败: " + gl.getProgramInfoLog(p));
+    }
+    return p;
+  }
+
+  var reducedMotion = false;
+  try {
+    reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (e) {
+    reducedMotion = false;
+  }
+
+  var cv = document.getElementById("cv");
+  var renderer = null;
+  var gl = null;
+  try {
+    gl = cv.getContext("webgl", { antialias:true, alpha:false }) ||
+         cv.getContext("experimental-webgl", { antialias:true, alpha:false });
+  } catch (e) {
+    gl = null;
+  }
+  if (gl) {
+    try {
+      renderer = createGLRenderer(gl);
+    } catch (e) {
+      renderer = null;   // 着色器编译失败也别把课停了，退回 2D
+    }
+  }
+  if (!renderer) {
+    renderer = create2DRenderer();
+    document.getElementById("mode").textContent = "2D 降级";
+    document.getElementById("hint").textContent = "设备不支持 3D，已自动切换为 2D 视图 —— 教学逻辑完全一样";
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     3D 渲染器实现
+     ══════════════════════════════════════════════════════════ */
+  function createGLRenderer(glc){
+    var progSphere = program(glc, VS_SPHERE, FS_SPHERE);
+    var progFlat  = program(glc, VS_FLAT, FS_FLAT);
+
+    var uMvpSphere = glc.getUniformLocation(progSphere, "uMVP");
+    var uModelSphere = glc.getUniformLocation(progSphere, "uModel");
+    var uNormalSphere = glc.getUniformLocation(progSphere, "uNormalMat");
+    var uColorSphere = glc.getUniformLocation(progSphere, "uColor");
+    var uLightSphere = glc.getUniformLocation(progSphere, "uLightDir");
+    var uEmissiveSphere = glc.getUniformLocation(progSphere, "uEmissive");
+    var uAlphaSphere = glc.getUniformLocation(progSphere, "uAlpha");
+    var uMvpFlat = glc.getUniformLocation(progFlat, "uMVP");
+    var uColorFlat = glc.getUniformLocation(progFlat, "uColor");
+    var uPointFlat = glc.getUniformLocation(progFlat, "uPointSize");
+
+    var sphere = sphereMesh(28, 18);
+    var orbitSegs = 96;
+
+    // 球体缓冲
+    var sphereBuf = glc.createBuffer();
+    glc.bindBuffer(glc.ARRAY_BUFFER, sphereBuf);
+    glc.bufferData(glc.ARRAY_BUFFER, sphere.pos, glc.STATIC_DRAW);
+    var sphereNrmBuf = glc.createBuffer();
+    glc.bindBuffer(glc.ARRAY_BUFFER, sphereNrmBuf);
+    glc.bufferData(glc.ARRAY_BUFFER, sphere.nrm, glc.STATIC_DRAW);
+    var sphereIdxBuf = glc.createBuffer();
+    glc.bindBuffer(glc.ELEMENT_ARRAY_BUFFER, sphereIdxBuf);
+    glc.bufferData(glc.ELEMENT_ARRAY_BUFFER, sphere.idx, glc.STATIC_DRAW);
+    var sphereCount = sphere.idx.length;
+
+    // 轨道缓冲（半径随 dist 变，所以每次重画）
+    var ringBuf = glc.createBuffer();
+    // 连线（太阳到地球）
+    var lineBuf = glc.createBuffer();
+    // 星空
+    var starBuf = glc.createBuffer();
+    glc.bindBuffer(glc.ARRAY_BUFFER, starBuf);
+    glc.bufferData(glc.ARRAY_BUFFER, starMesh(260), glc.STATIC_DRAW);
+
+    var cam = { az: 0.7, el: 0.42, dist: 8.2 };
+    var angle = 0.9;
+    var last = 0;
+
+    glc.enable(glc.DEPTH_TEST);
+    glc.enable(glc.CULL_FACE);
+    glc.cullFace(glc.BACK);
+
+    /* ── 交互：拖动旋转，滚轮缩放 ─────────────────────────── */
+    var dragging = false, lastX = 0, lastY = 0;
+    cv.addEventListener("pointerdown", function(e){
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId);
+    });
+    cv.addEventListener("pointermove", function(e){
+      if (!dragging) return;
+      cam.az -= (e.clientX - lastX) * 0.006;
+      cam.el += (e.clientY - lastY) * 0.006;
+      cam.el = Math.max(-1.15, Math.min(1.15, cam.el));
+      lastX = e.clientX; lastY = e.clientY;
+    });
+    function endDrag(e){
+      dragging = false;
+      if (e && cv.releasePointerCapture && e.pointerId !== undefined) {
+        try { cv.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+    cv.addEventListener("pointerup", endDrag);
+    cv.addEventListener("pointercancel", endDrag);
+    cv.addEventListener("pointerleave", endDrag);
+    cv.addEventListener("wheel", function(e){
+      e.preventDefault();
+      cam.dist = Math.max(3.2, Math.min(20, cam.dist * (1 + e.deltaY * 0.0012)));
+    }, { passive:false });
+
+    function resize(){
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var w = Math.max(1, Math.round(cv.clientWidth * dpr));
+      var h = Math.max(1, Math.round(cv.clientHeight * dpr));
+      if (cv.width !== w || cv.height !== h) {
+        cv.width = w; cv.height = h;
+      }
+      glc.viewport(0, 0, cv.width, cv.height);
+    }
+
+    function eyePos(){
+      return camEye(cam);
+    }
+
+    function drawSphere(model, color, emissive, alpha, lightDir){
+      glc.bindBuffer(glc.ARRAY_BUFFER, sphereBuf);
+      var aPos = glc.getAttribLocation(progSphere, "aPos");
+      glc.enableVertexAttribArray(aPos);
+      glc.vertexAttribPointer(aPos, 3, glc.FLOAT, false, 0, 0);
+      glc.bindBuffer(glc.ARRAY_BUFFER, sphereNrmBuf);
+      var aNrm = glc.getAttribLocation(progSphere, "aNormal");
+      glc.enableVertexAttribArray(aNrm);
+      glc.vertexAttribPointer(aNrm, 3, glc.FLOAT, false, 0, 0);
+      glc.bindBuffer(glc.ELEMENT_ARRAY_BUFFER, sphereIdxBuf);
+      glc.uniformMatrix4fv(uModelSphere, false, model);
+      glc.uniformMatrix3fv(uNormalSphere, false, new Float32Array([
+        model[0],model[1],model[2],
+        model[4],model[5],model[6],
+        model[8],model[9],model[10]
+      ]));
+      glc.uniform3f(uColorSphere, color[0], color[1], color[2]);
+      glc.uniform3f(uLightSphere, lightDir[0], lightDir[1], lightDir[2]);
+      glc.uniform1f(uEmissiveSphere, emissive);
+      glc.uniform1f(uAlphaSphere, alpha);
+      glc.drawElements(glc.TRIANGLES, sphereCount, glc.UNSIGNED_SHORT, 0);
+    }
+
+    function drawFlat(pos, count, color, mode, pointSize){
+      glc.bindBuffer(glc.ARRAY_BUFFER, ringBuf);
+      glc.bufferData(glc.ARRAY_BUFFER, pos, glc.DYNAMIC_DRAW);
+      var aPos = glc.getAttribLocation(progFlat, "aPos");
+      glc.enableVertexAttribArray(aPos);
+      glc.vertexAttribPointer(aPos, 3, glc.FLOAT, false, 0, 0);
+      glc.uniform4f(uColorFlat, color[0], color[1], color[2], color.length > 3 ? color[3] : 1);
+      glc.uniform1f(uPointFlat, pointSize || 1);
+      glc.drawArrays(mode, 0, count);
+    }
+
+    function frame(now){
+      if (!last) last = now;
+      var dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      // 减弱动效时不自动转 —— 画面自己会动，但用户没要求
+      if (!reducedMotion) angle += dt * 0.16;
+
+      resize();
+      var W = cv.width, H = cv.height;
+      glc.clearColor(0.031, 0.075, 0.122, 1);
+      glc.clear(glc.COLOR_BUFFER_BIT | glc.DEPTH_BUFFER_BIT);
+
+      var proj = m4perspective(Math.PI/3.2, W / Math.max(1, H), 0.1, 120);
+      var view = m4lookAt(eyePos(), [0,0,0], [0,1,0]);
+      var vp = m4mul(proj, view);
+      var mvp = new Float32Array(16);
+
+      // 星空（关深度写入，当背景）
+      glc.useProgram(progFlat);
+      glc.uniformMatrix4fv(uMvpFlat, false, vp);
+      glc.disable(glc.DEPTH_TEST);
+      glc.bindBuffer(glc.ARRAY_BUFFER, starBuf);
+      var aStar = glc.getAttribLocation(progFlat, "aPos");
+      glc.enableVertexAttribArray(aStar);
+      glc.vertexAttribPointer(aStar, 3, glc.FLOAT, false, 0, 0);
+      glc.uniform4f(uColorFlat, 0.78, 0.85, 0.95, 1);
+      glc.uniform1f(uPointFlat, 1.6);
+      glc.drawArrays(glc.POINTS, 0, 260);
+      glc.enable(glc.DEPTH_TEST);
+
+      // 轨道环
+      glc.useProgram(progFlat);
+      glc.uniformMatrix4fv(uMvpFlat, false, vp);
+      var ring = ringMesh(orbitRadius(), orbitSegs);
+      glc.bindBuffer(glc.ARRAY_BUFFER, ringBuf);
+      glc.bufferData(glc.ARRAY_BUFFER, ring, glc.DYNAMIC_DRAW);
+      var aLine = glc.getAttribLocation(progFlat, "aPos");
+      glc.enableVertexAttribArray(aLine);
+      glc.vertexAttribPointer(aLine, 3, glc.FLOAT, false, 0, 0);
+      glc.uniform4f(uColorFlat, 0.165, 0.306, 0.467, 1);
+      glc.uniform1f(uPointFlat, 1);
+      glc.drawArrays(glc.LINE_STRIP, 0, orbitSegs + 1);
+
+      // 太阳到地球的连线
+      var ep = earthPos(angle);
+      glc.bindBuffer(glc.ARRAY_BUFFER, lineBuf);
+      glc.bufferData(glc.ARRAY_BUFFER, new Float32Array([0,0,0, ep[0],ep[1],ep[2]]), glc.DYNAMIC_DRAW);
+      glc.enableVertexAttribArray(aLine);
+      glc.vertexAttribPointer(aLine, 3, glc.FLOAT, false, 0, 0);
+      glc.uniform4f(uColorFlat, 0.133, 0.827, 0.933, 1);
+      glc.drawArrays(glc.LINES, 0, 2);
+
+      // 球体
+      glc.useProgram(progSphere);
+      var sunR = sunRadius();
+      var lightDir = norm3([-ep[0], 0, -ep[2]]);   // 太阳在原点，照向地球
+      m4mul(vp, m4model(0,0,0, sunR), mvp);
+      glc.uniformMatrix4fv(uMvpSphere, false, mvp);
+      drawSphere(m4model(0,0,0, sunR), [1.0, 0.85, 0.30], 1.0, 1, lightDir);
+
+      m4mul(vp, m4model(ep[0],ep[1],ep[2], EARTH_R), mvp);
+      glc.uniformMatrix4fv(uMvpSphere, false, mvp);
+      drawSphere(m4model(ep[0],ep[1],ep[2], EARTH_R), [0.18, 0.49, 0.96], 0, 1, lightDir);
+
+      // 云层反照率（L3 才有）
+      if (ALLOWED.albedo && albedo > 0){
+        glc.enable(glc.BLEND);
+        glc.blendFunc(glc.SRC_ALPHA, glc.ONE_MINUS_SRC_ALPHA);
+        glc.depthMask(false);
+        m4mul(vp, m4model(ep[0],ep[1],ep[2], CLOUD_R), mvp);
+        glc.uniformMatrix4fv(uMvpSphere, false, mvp);
+        drawSphere(m4model(ep[0],ep[1],ep[2], CLOUD_R), [1,1,1], 0.85, albedo * 0.9, lightDir);
+        glc.depthMask(true);
+        glc.disable(glc.BLEND);
+      }
+
+      window.requestAnimationFrame(frame);
+    }
+
+    window.requestAnimationFrame(frame);
+    window.addEventListener("resize", function(){ resize(); });
+
+    return {
+      mode: "3D",
+      reset: function(){ cam.az = 0.7; cam.el = 0.42; cam.dist = 8.2; },
+      /* 3D 每帧重画，这里什么都不用做 */
+      redraw: function(){}
+    };
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     2D 降级渲染器 —— 同一套场景状态与教学逻辑（C4）
+     ══════════════════════════════════════════════════════════ */
+  function create2DRenderer(){
+    var ctx = cv.getContext("2d");
+    var angle = 0.9;
+
+    function resize(){
+      var dpr = Math.min(window.devicePixelRatio||1, 2);
+      var w = Math.max(1, Math.round(cv.clientWidth*dpr));
+      var h = Math.max(1, Math.round(cv.clientHeight*dpr));
+      if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+    function draw(){
+      resize();
+      var W = cv.clientWidth, H = cv.clientHeight;
+      if (!W || !H) return;
+      var cx = W/2, cy = H/2, R = Math.min(W,H)*0.36;
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = "#08131F"; ctx.fillRect(0,0,W,H);
+
+      var sunR = 26 + (bright-1)*40;
+      var g = ctx.createRadialGradient(cx,cy,0,cx,cy,sunR*2.6);
+      g.addColorStop(0,"#FFD84D"); g.addColorStop(0.35,"#F2A33C"); g.addColorStop(1,"rgba(242,163,60,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx,cy,sunR*2.6,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#FFD84D"; ctx.beginPath(); ctx.arc(cx,cy,sunR,0,Math.PI*2); ctx.fill();
+
+      ctx.strokeStyle = "#2A4E77"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(cx,cy,R*1.5,R,0,0,Math.PI*2); ctx.stroke();
+
+      var orb = R * dist;
+      var ex = cx + orb*Math.cos(angle), ey = cy + orb*Math.sin(angle);
+      ctx.strokeStyle = "#22D3EE"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ex,ey); ctx.stroke();
+
+      ctx.fillStyle = "#2E7CF6";
+      ctx.beginPath(); ctx.arc(ex,ey,12,0,Math.PI*2); ctx.fill();
+      if (ALLOWED.albedo && albedo > 0){
+        ctx.fillStyle = "rgba(255,255,255," + (albedo*0.9).toFixed(2) + ")";
+        ctx.beginPath(); ctx.arc(ex,ey,16,0,Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle = "#B9D2E6"; ctx.font = "13px Microsoft YaHei"; ctx.textAlign = "center";
+      ctx.fillText("地球", ex, ey+32);
+      ctx.fillText("恒星", cx, cy - sunR - 14);
+      ctx.fillStyle = "#7E9AAE"; ctx.font = "12px Microsoft YaHei";
+      ctx.fillText("这是模型，不是真实宇宙 —— 真实情况还要考虑很多别的因素", W/2, H-22);
+    }
+    window.addEventListener("resize", draw);
+    if (!reducedMotion){
+      (function tick(){
+        angle += 0.004;
+        draw();
+        window.requestAnimationFrame(tick);
+      })();
+    } else {
+      draw();
+    }
+    return { mode: "2D", reset: function(){}, redraw: draw };
+  }
+
+  /* ── 读数（HUD）：3D 与 2D 表现一致 ───────────────────────── */
+  function updateHud(){
+    var t = temperature(dist, bright, albedo);
+    var h = habitability(dist, bright, albedo);
+    var el = document.getElementById("hudT");
+    var eh = document.getElementById("hudH");
+    if (el) el.textContent = Math.round(t) + " K";
+    if (eh) eh.textContent = "宜居 " + h;
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     面板（与 2D 版同一套教学逻辑）
+     ══════════════════════════════════════════════════════════ */
+  function render(){
+    var body = document.getElementById("phaseBody");
+    var steps = document.getElementById("steps").children;
+    for (var i=0;i<steps.length;i++) steps[i].className = (i<=phaseIdx ? "on" : "");
+    updateHud();
+
+    var chipHtml = '<span class="chip'+(LV===1?" on":"")+'">L1 一个变量</span>' +
+      '<span class="chip'+(LV>=2?" on":"")+'">L2 两个变量</span>' +
+      '<span class="chip'+(LV>=3?" on":"")+'">L3 三个变量</span>' +
+      '<span class="chip on">' + PHASES[phaseIdx] + '</span>';
+
+    if (phaseIdx === 0){
+      body.innerHTML = chipHtml +
+        '<h2>导入 · 这是模型，不是宇宙</h2>' +
+        '<p>屏幕上这个太阳系，是<b>模型</b>，不是真的宇宙。它故意做得很简单，好让你能自己动手改。</p>' +
+        '<p>你可以<b>拖着转一转</b>，从侧面看：地球绕着恒星转，转到哪儿都是一样的距离。</p>' +
+        '<p>先认出来：哪些地方是「我们自己定的规矩」？</p>' +
+        '<div class="var"><label>你觉得「宜居」是怎么算出来的？<span>选一个</span></label>' +
+        '<button onclick="pickModel(0)">离恒星太近就太热，太远就太冷</button>' +
+        '<button onclick="pickModel(1)">温度刚好的时候最舒服</button>' +
+        '<button onclick="pickModel(2)">反正地球最舒服</button></div>' +
+        '<p style="color:#7E9AAE">想一想：这个模型里少了什么？等会儿收尾再回来看。</p>';
+    }
+    else if (phaseIdx === 1){
+      body.innerHTML = chipHtml +
+        '<h2>预测 · 先猜，再验证</h2>' +
+        '<p>地球<b>往远一点</b>，恒星还是原来那颗。你猜：温度会怎么变？</p>' +
+        '<p>先写下来，猜错了也没关系 —— <b>能被打败的预测才值钱</b>。</p>' +
+        '<div class="var"><label>我的预测</label>' +
+        '<button onclick="pickPred(1)">会变热</button>' +
+        '<button onclick="pickPred(-1)">会变冷</button>' +
+        '<button onclick="pickPred(0)">差不多不变</button></div>' +
+        '<p style="color:#7E9AAE">提示：' +
+        (ALLOWED.bright ? '这节课你还可以动「亮度」那个变量。' : '这节课先只动「距离」这一个变量。') +
+        '</p>';
+    }
+    else if (phaseIdx === 2){
+      body.innerHTML = chipHtml +
+        '<h2>实验 · 一次只改一个东西</h2>' +
+        '<p>拖动下面的滑块，做实验。每做完一次就点「记一笔」。</p>' +
+        varHtml() +
+        '<div class="var"><button onclick="runExp()">跑一次实验</button>' +
+        '<button class="ghost" onclick="resetVars()">全部归位</button>' +
+        '<button class="ghost" onclick="resetView()">重置视角</button></div>' +
+        '<p style="color:#7E9AAE">重要：一次只改一个变量，其它别动 —— 这样才能知道是谁造成的。</p>';
+    }
+    else if (phaseIdx === 3){
+      var rows = records.map(function(r,i){
+        var ok = r.pred === r.actual;
+        return '<tr><td>'+(i+1)+'</td><td>'+r.d+'</td><td>'+r.p+'</td><td>'+r.t+'</td><td>'+r.a+'</td>'+
+               '<td class="'+(ok?"yes":"no")+'">'+(ok?"猜对了":"猜错了")+'</td></tr>';
+      }).join("");
+      body.innerHTML = chipHtml +
+        '<h2>记录 · 数据说话</h2>' +
+        '<p>把每笔实验记下来，看看你的预测被支持了，还是被推翻了。</p>' +
+        '<table><tr><th>#</th><th>距离</th><th>亮度</th><th>温度</th><th>宜居</th><th>对照预测</th></tr>' +
+        (rows || '<tr><td colspan="6" style="color:#7E9AAE">还没有记录，回上一步做几次实验</td></tr>') +
+        '</table>' +
+        '<div class="var" style="margin-top:14px">' +
+        '<button onclick="goPhase(4)">我记好了，去收尾</button>' +
+        '<button class="ghost" onclick="goPhase(2)">再补几笔</button></div>';
+    }
+    else {
+      body.innerHTML = chipHtml +
+        '<h2>收尾 · 这个模型到哪儿为止</h2>' +
+        '<p>你一共记了 <b>'+records.length+'</b> 笔实验，' +
+        (records.some(function(r){return r.pred!==r.actual;}) ? '其中有<b>被推翻</b>的预测 —— 这才是最有价值的。' : '预测都站住了。') + '</p>' +
+        '<h2>接回商业线</h2>' +
+        '<p>「宜居指数」就像一间店位置的<b>好不好</b>：不是越近越好，也不是越远越好，是<b>刚好</b>才好。</p>' +
+        '<p>回到《柠檬水摊大作战》：你会发现<b>定价也是这样</b> —— 太便宜不赚钱，太贵没人买，<b>有一个刚刚好的甜蜜点</b>。</p>' +
+        (LV>=3 ? '<h2>再多想一层</h2><p>「离得近」和「温度高」这两件事一起出现，<b>不等于</b>「离得近导致温度高」。<b>相关 ≠ 因果。</b>想想还有什么别的东西同时导致了它们。</p>' : '') +
+        '<div class="var"><button onclick="finish()">我懂了</button></div>';
+    }
+  }
+
+  function varHtml(){
+    var h = '';
+    h += '<div class="var'+(ALLOWED.dist?"":" locked")+'"><label><span>距离 d（AU）</span><span id="dVal">'+(dist.toFixed(2))+'</span></label>' +
+         '<input type="range" id="dist" min="0.5" max="2" step="0.05" value="'+dist+'" '+(ALLOWED.dist?"":"disabled")+' oninput="setVar(\'dist\',this.value)"></div>';
+    if (ALLOWED.bright){
+      h += '<div class="var"><label><span>恒星亮度 P</span><span id="pVal">'+bright.toFixed(2)+'</span></label>' +
+           '<input type="range" id="bright" min="0.6" max="1.5" step="0.05" value="'+bright+'" oninput="setVar(\'bright\',this.value)"></div>';
+    }
+    if (ALLOWED.albedo){
+      h += '<div class="var"><label><span>云层反照率 a</span><span id="aVal">'+albedo.toFixed(2)+'</span></label>' +
+           '<input type="range" id="albedo" min="0" max="0.6" step="0.05" value="'+albedo+'" oninput="setVar(\'albedo\',this.value)"></div>';
+    }
+    return h;
+  }
+
+  /* ── 行为 ──────────────────────────────────────────────────── */
+  window.pickModel = function(n){
+    var fb = document.createElement("div");
+    fb.className = "var";
+    fb.style.borderLeft = "3px solid #4ADE9B";
+    fb.innerHTML = n === 1
+      ? "<b>对了一半。</b>模型算的是温度，所以「温度刚好」最舒服 —— 但更准确的说法是：<b>温度落在宜居区间里</b>。第一条太绝对了。"
+      : (n === 0 ? "<b>不太对。</b>近了会太热、远了会太冷 —— 但不是「越近越好」，而是<b>刚好才舒服</b>。"
+                 : "<b>不对。</b>地球舒服不是因为地球特别，是<b>它刚好落在了温度刚好的位置</b>。换一颗恒星就不一定了。");
+    document.getElementById("phaseBody").appendChild(fb);
+    if (n===1) badges.push("会质疑模型");
+    setTimeout(function(){ phaseIdx=1; render(); }, 1400);
+  };
+
+  window.pickPred = function(n){
+    prediction = n;
+    phaseIdx = 2; render();
+  };
+
+  window.setVar = function(k, v){
+    v = parseFloat(v);
+    if (k==="dist") dist = v;
+    if (k==="bright") bright = v;
+    if (k==="albedo") albedo = v;
+    document.getElementById("dVal").textContent = dist.toFixed(2);
+    var p = document.getElementById("pVal"); if (p) p.textContent = bright.toFixed(2);
+    var a = document.getElementById("aVal"); if (a) a.textContent = albedo.toFixed(2);
+    updateHud();
+    if (renderer && renderer.redraw) renderer.redraw();
+  };
+
+  window.resetVars = function(){ dist=1; bright=1; albedo=0.30; render(); };
+
+  window.resetView = function(){ if (renderer && renderer.reset) renderer.reset(); };
+
+  window.runExp = function(){
+    observations++;
+    var t = temperature(dist,bright,albedo);
+    var h = habitability(dist,bright,albedo);
+    var actual = 0;
+    if (records.length > 0){
+      var prev = records[records.length-1];
+      var dt2 = t - prev.t;
+      actual = dt2 > 0.5 ? 1 : (dt2 < -0.5 ? -1 : 0);
+    }
+    records.push({ d: dist.toFixed(2), p: bright.toFixed(2), t: Math.round(t), a: h,
+                   pred: prediction === null ? actual : prediction, actual: actual });
+    if (observations >= 3 && badges.indexOf("会做实验") < 0) badges.push("会做实验");
+    phaseIdx = 3; render();
+  };
+
+  window.goPhase = function(n){ phaseIdx = n; render(); };
+
+  window.finish = function(){
+    if (badges.indexOf("变量猎人") < 0) badges.push("变量猎人");
+    var good = records.filter(function(r){return r.pred===r.actual;}).length;
+    var score = observations*20 + good*15;
+    post({
+      score: score,
+      prediction: prediction===null ? "未预测" : (prediction===1?"会变热":prediction===-1?"会变冷":"不变"),
+      observations: observations,
+      badges: badges,
+      task_completion: Math.min(1, observations/3)
+    });
+    phaseIdx = 4; render();
+    var body = document.getElementById("phaseBody");
+    var done = document.createElement("div");
+    done.className = "var";
+    done.style.borderLeft = "3px solid #FFD84D";
+    done.innerHTML = "<b>已经交上去了。</b>谢谢你的实验记录。";
+    body.appendChild(done);
+  };
+
+  render();
+  if (window.parent === window) { session.ready = true; render(); }
+})();
+</script>
+</body>
+</html>

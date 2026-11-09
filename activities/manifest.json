@@ -121,6 +121,49 @@
       "result_optional": [
         "task_completion"
       ]
+    },
+    {
+      "id": "var-lab-3d",
+      "name": "太阳系变量实验室（3D）",
+      "version": "1.0.0",
+      "lesson_refs": [
+        "L1-02",
+        "L2-01",
+        "L2-03",
+        "L3-01",
+        "L3-04"
+      ],
+      "mode_cards": [
+        "MODE_M1",
+        "MODE_M2",
+        "MODE_M6"
+      ],
+      "duration_min": 15,
+      "entry": "var-lab-3d.html",
+      "standalone": true,
+      "result_schema": {
+        "score": "number",
+        "prediction": "string",
+        "observations": "number",
+        "badges": "string[]",
+        "task_completion": "number"
+      },
+      "artifact_fields": [
+        "prediction",
+        "observations",
+        "badges"
+      ],
+      "offline_fallback": "任务单 P02（打印版）：先预测，再记录三次实验的数据（3D 版与 2D 版通用同一张任务单）",
+      "fallback_2d": true,
+      "grades": [
+        "GRADE_L1",
+        "GRADE_L2",
+        "GRADE_L3"
+      ],
+      "$comment": "原生 WebGL 手写渲染，不引任何外部库（C3）。投屏机不支持 WebGL 时自动降级到 2D 顶视图，教学逻辑与 2D 版完全一致。",
+      "result_optional": [
+        "task_completion"
+      ]
     }
   ]
 }
