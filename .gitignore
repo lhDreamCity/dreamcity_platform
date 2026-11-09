@@ -10,3 +10,4 @@ var/
 coverage/
 _research/
 *.tar.gz
+.claude/
