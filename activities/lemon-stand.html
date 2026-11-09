@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>柠檬水摊大作战</title>
+<style>
+  /* 单文件 · 零外部 CDN · 零后端请求（C3） */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0B1B2C;font-family:"Microsoft YaHei","微软雅黑",system-ui,sans-serif;color:#fff;overflow:hidden}
+  #wrap{position:relative;width:100vw;height:100vh}
+  canvas{display:block;width:100%;height:100%}
+  #hud{position:absolute;inset:0;pointer-events:none}
+  .pill{position:absolute;background:#16345A;border:2px solid #2E7CF6;border-radius:24px;padding:6px 16px;font-size:15px;color:#C7DCEC}
+  #money{top:18px;left:18px}
+  #timer{top:18px;left:50%;transform:translateX(-50%)}
+  #combo{top:18px;right:18px}
+  #hints{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:#16345A;border:1px solid #2A4E77;border-radius:16px;padding:10px 20px;font-size:15px;color:#B9D2E6}
+  #overlay{position:absolute;inset:0;display:none;place-items:center;background:rgba(11,27,44,.88)}
+  #panel{background:#fff;border:1px solid #DCE9F1;border-radius:24px;padding:32px 40px;min-width:460px;color:#123046;text-align:center;box-shadow:0 4px 11px rgba(11,27,44,.22)}
+  #panel h1{font-size:28px;margin-bottom:8px}
+  #panel p{font-size:15px;color:#4A6B80;line-height:1.8;margin-bottom:6px}
+  .chip{display:inline-block;background:#FFF6DC;border:1px solid #F2DFA0;border-radius:999px;padding:4px 12px;font-size:13px;color:#123046;margin:4px}
+  button{font-family:inherit;font-size:17px;font-weight:700;color:#fff;background:#2E7CF6;border:none;border-radius:24px;padding:12px 34px;cursor:pointer;margin-top:16px}
+  button:hover{background:#22D3EE;color:#123046}
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div class="pill" id="money">今日收入 ¥0</div>
+    <div class="pill" id="timer">90 秒</div>
+    <div class="pill" id="combo">连击 ×0</div>
+    <div id="hints">拖动滑块定价，点柠檬做柠檬水，再点顾客把水递给他</div>
+  </div>
+  <div id="overlay"><div id="panel"></div></div>
+</div>
+<script>
+(function(){
+  "use strict";
+  // ── 与宿主握手 ──────────────────────────────────────────────
+  var ACTIVITY_ID = "lemon-stand";
+  var session = { sessionId: null, studentId: null, nickname: null, ready: false };
+  window.addEventListener("message", function (e) {
+    if (!e.data || e.data.type !== "dreamcity:host:init") return;
+    session.sessionId = e.data.sessionId;
+    session.studentId = e.data.studentId || null;
+    session.nickname = e.data.studentNickname || null;
+    session.ready = true;
+  });
+  function post(payload){
+    if (!session.ready) return;                    // 未握手不回传
+    parent.postMessage({
+      type: "dreamcity:activity:result",
+      activityId: ACTIVITY_ID,
+      sessionId: session.sessionId,
+      studentId: session.studentId,
+      payload: payload,
+      visibility: "VIS_L0",                        // 默认私密，由平台按授权逐级放开
+      ts: Date.now()
+    }, "*");
+  }
+
+  // ── 画布 ────────────────────────────────────────────────────
+  var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  function resize(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener("resize", resize); resize();
+
+  var W = 0, H = 0;
+  function dims(){ W = cv.clientWidth; H = cv.clientHeight; }
+
+  // ── 游戏状态 ────────────────────────────────────────────────
+  var TOTAL = 90, price = 6, cost = 2.5, income = 0, profit = 0;
+  var lemons = 0, cups = 0, combo = 0, bestCombo = 0, served = 0, timeLeft = TOTAL;
+  var customers = [], particles = [], confetti = [], floating = [];
+  var phase = "intro", phaseTimer = 0, last = 0, reduced = false;
+  var badgeList = [], observations = 0;
+  var targetPrice = 6, priceHintShown = false;
+
+  try { reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch(e){}
+
+  function reset(){
+    price = 6; cost = 2.5; income = 0; profit = 0; lemons = 0; cups = 0;
+    combo = 0; bestCombo = 0; served = 0; timeLeft = TOTAL;
+    customers = []; particles = []; confetti = []; floating = [];
+    badgeList = []; observations = 0;
+    phase = "intro"; phaseTimer = 0;
+    updateHud();
+  }
+
+  function updateHud(){
+    document.getElementById("money").textContent = "今日收入 ¥" + Math.round(income);
+    document.getElementById("timer").textContent = Math.max(0, Math.ceil(timeLeft)) + " 秒";
+    document.getElementById("combo").textContent = "连击 ×" + combo;
+  }
+
+  // ── 顾客 ────────────────────────────────────────────────────
+  function spawnCustomer(){
+    var names = ["小宇","然然","朵朵","乐乐","豆豆","团子"];
+    var fromLeft = Math.random() < 0.5;
+    customers.push({
+      x: fromLeft ? -60 : W + 60,
+      y: H * 0.66,
+      tx: fromLeft ? W * (0.28 + Math.random()*0.12) : W * (0.60 + Math.random()*0.12),
+      ty: H * 0.66,
+      wait: 0,
+      patience: 6 + Math.random()*5,
+      fromLeft: fromLeft,
+      name: names[Math.floor(Math.random()*names.length)],
+      color: ["#2E7CF6","#7C6BFF","#F2A33C","#4ADE9B"][Math.floor(Math.random()*4)],
+      mood: 1
+    });
+  }
+
+  // ── 交互 ────────────────────────────────────────────────────
+  var slider = { x: 0, y: 0, w: 260, h: 44 };
+  function layoutSlider(){
+    dims();
+    slider.w = Math.min(320, W * 0.42);
+    slider.x = W * 0.5 - slider.w / 2;
+    slider.y = H - 118;
+  }
+  layoutSlider();
+
+  var dragging = false;
+  function pointerPos(ev){
+    var r = cv.getBoundingClientRect();
+    var p = ev.touches ? ev.touches[0] : ev;
+    return { x: p.clientX - r.left, y: p.clientY - r.top };
+  }
+  function inSlider(p){
+    return p.x >= slider.x - 10 && p.x <= slider.x + slider.w + 10 &&
+           p.y >= slider.y - 14 && p.y <= slider.y + slider.h + 14;
+  }
+  function setPriceFromX(x){
+    var t = (x - slider.x) / slider.w;
+    t = Math.max(0, Math.min(1, t));
+    price = Math.round((2 + t * 12) * 10) / 10;   // 2 ~ 14 元
+  }
+  function onDown(ev){
+    if (phase === "intro" || phase === "over") return;
+    var p = pointerPos(ev);
+    if (inSlider(p)) { dragging = true; setPriceFromX(p.x); return; }
+    // 点柠檬 = 准备一杯；点顾客 = 递过去
+    for (var i = 0; i < lemons.length; i++){
+      var l = lemons[i];
+      if (Math.hypot(l.x - p.x, l.y - p.y) < 34){
+        lemons.splice(i,1);
+        cups = Math.min(cups + 1, 3);
+        observations++;
+        return;
+      }
+    }
+    for (var j = 0; j < customers.length; j++){
+      var c = customers[j];
+      if (Math.hypot(c.x - p.x, c.y - p.y) < 40 && c.wait > 0 && cups > 0){
+        cups--;
+        served++;
+        var gain = price;
+        income += gain;
+        profit += gain - cost;
+        combo++;
+        bestCombo = Math.max(bestCombo, combo);
+        c.wait = -1;
+        c.served = true;
+        floating.push({ x: c.x, y: c.y - 40, text: "+¥" + gain, life: 1 });
+        if (combo >= 3) { confetti.push({x:c.x,y:c.y,vx:(Math.random()-0.5)*6,vy:-6-Math.random()*4,life:1,
+          color:["#FFD84D","#4ADE9B","#22D3EE","#FF7A6B"][Math.floor(Math.random()*4)]}); }
+        if (!badgeList.includes("定价小能手") && served >= 5) badgeList.push("定价小能手");
+        if (!badgeList.includes("连击达人") && bestCombo >= 5) badgeList.push("连击达人");
+        updateHud();
+        return;
+      }
+    }
+  }
+  function onMove(ev){
+    if (!dragging) return;
+    setPriceFromX(pointerPos(ev).x);
+  }
+  function onUp(){ dragging = false; }
+  cv.addEventListener("mousedown", onDown);
+  cv.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+  cv.addEventListener("touchstart", function(e){ e.preventDefault(); onDown(e); }, {passive:false});
+  cv.addEventListener("touchmove", function(e){ e.preventDefault(); onMove(e); }, {passive:false});
+  window.addEventListener("touchend", onUp);
+
+  // ── 绘制 ────────────────────────────────────────────────────
+  function drawBackground(t){
+    var g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#16345A"); g.addColorStop(1,"#0B1B2C");
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+    // 星点
+    ctx.fillStyle = "rgba(255,255,255,.5)";
+    for (var i=0;i<50;i++){
+      var sx = ((i*137.5) % W), sy = ((i*73.3) % (H*0.55));
+      var tw = reduced ? 0.5 : 0.5 + 0.5*Math.sin(t/600 + i);
+      ctx.globalAlpha = 0.25 + tw*0.35;
+      ctx.beginPath(); ctx.arc(sx, sy, 1.4, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawStall(){
+    var x = W*0.5 - 150, y = H*0.52;
+    ctx.fillStyle = "#16345A"; ctx.strokeStyle = "#22D3EE"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, 300, 110, 16); else ctx.rect(x, y, 300, 110);
+    ctx.fill(); ctx.stroke();
+    // 遮阳棚
+    ctx.fillStyle = "#2E7CF6";
+    for (var i=0;i<6;i++){
+      ctx.fillStyle = i%2 ? "#2E7CF6" : "#22D3EE";
+      ctx.fillRect(x + i*50, y - 26, 50, 26);
+    }
+    ctx.fillStyle = "#7E9AAE"; ctx.font = "14px Microsoft YaHei";
+    ctx.textAlign = "center";
+    ctx.fillText("柠檬水摊", x+150, y+40);
+    ctx.fillStyle = "#FFD84D"; ctx.font = "bold 22px Microsoft YaHei";
+    ctx.fillText("¥" + price.toFixed(1), x+150, y+74);
+  }
+
+  function drawCustomer(c, t){
+    var bob = reduced ? 0 : Math.sin(t/300 + c.x) * 3;
+    ctx.save(); ctx.translate(c.x, c.y + bob);
+    // 身体
+    ctx.fillStyle = c.color;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-22,-8,44,52,14); else ctx.rect(-22,-8,44,52);
+    ctx.fill();
+    // 头
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(0,-26,20,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = c.color; ctx.lineWidth = 2.5; ctx.stroke();
+    // 眼睛（正向引导：微笑）
+    ctx.fillStyle = "#123046";
+    ctx.beginPath(); ctx.arc(-7,-29,2.6,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-29,2.6,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#123046"; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(0,-22,7,0.2*Math.PI,0.8*Math.PI); ctx.stroke();
+    // 名牌
+    ctx.fillStyle = "#B9D2E6"; ctx.font = "12px Microsoft YaHei"; ctx.textAlign="center";
+    ctx.fillText(c.name, 0, 60);
+    // 心情气泡：耐心条
+    if (c.wait > 0){
+      var ratio = Math.max(0, c.wait / c.patience);
+      ctx.fillStyle = "rgba(22,52,90,.9)";
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-30,-78,60,12,6); else ctx.rect(-30,-78,60,12);
+      ctx.fill();
+      ctx.fillStyle = ratio > 0.4 ? "#4ADE9B" : "#FFD84D";
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-29,-77,58*ratio,10,5); else ctx.rect(-29,-77,58*ratio,10);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawLemon(l){
+    ctx.save(); ctx.translate(l.x,l.y);
+    ctx.rotate(l.rot);
+    ctx.fillStyle = "#FFD84D"; ctx.strokeStyle="#E0B400"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.ellipse(0,0,17,13,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#4ADE9B";
+    ctx.beginPath(); ctx.ellipse(10,-9,7,4,-0.5,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSlider(){
+    ctx.fillStyle = "#16345A"; ctx.strokeStyle="#2A4E77"; ctx.lineWidth=1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(slider.x, slider.y, slider.w, slider.h, 22); else ctx.rect(slider.x,slider.y,slider.w,slider.h);
+    ctx.fill(); ctx.stroke();
+    // 成本线
+    var cx = slider.x + slider.w * ((cost - 2) / 12);
+    ctx.fillStyle = "#FF7A6B";
+    ctx.fillRect(cx, slider.y - 6, 2, slider.h + 12);
+    ctx.fillStyle = "#B9D2E6"; ctx.font = "12px Microsoft YaHei"; ctx.textAlign="left";
+    ctx.fillText("成本", cx + 6, slider.y - 12);
+    // 滑块
+    var px = slider.x + slider.w * ((price - 2) / 12);
+    ctx.fillStyle = "#22D3EE";
+    ctx.beginPath(); ctx.arc(px, slider.y + slider.h/2, 17, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="#0B1B2C"; ctx.font="bold 12px Microsoft YaHei"; ctx.textAlign="center";
+    ctx.fillText(price.toFixed(0), px, slider.y + slider.h/2 + 4);
+    ctx.fillStyle="#B9D2E6"; ctx.textAlign="center"; ctx.font="13px Microsoft YaHei";
+    ctx.fillText("定价（越靠右越贵）", W*0.5, slider.y - 24);
+  }
+
+  function drawUI(t){
+    // 杯子
+    for (var i=0;i<cups;i++){
+      ctx.fillStyle="#EAF3FF"; ctx.strokeStyle="#22D3EE"; ctx.lineWidth=2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(W*0.5 - 30 + i*26, H*0.40, 22, 30, 6); else ctx.rect(W*0.5-30+i*26,H*0.40,22,30);
+      ctx.fill(); ctx.stroke();
+    }
+    drawSlider();
+    // 飘字
+    for (var j=floating.length-1;j>=0;j--){
+      var f = floating[j];
+      ctx.globalAlpha = Math.max(0,f.life);
+      ctx.fillStyle = "#FFD84D"; ctx.font="bold 22px Microsoft YaHei"; ctx.textAlign="center";
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.globalAlpha = 1;
+      f.y -= 1.2; f.life -= 0.02;
+      if (f.life <= 0) floating.splice(j,1);
+    }
+  }
+
+  // ── 主循环 ──────────────────────────────────────────────────
+  function update(dt){
+    if (phase === "intro"){
+      phaseTimer += dt;
+      if (phaseTimer > 0.2 && phaseTimer - dt <= 0.2) showOverlay();
+      return;
+    }
+    if (phase !== "play") return;
+
+    timeLeft -= dt;
+    if (timeLeft <= 0){ timeLeft = 0; endGame(); return; }
+
+    // 顾客移动
+    for (var i=customers.length-1;i>=0;i--){
+      var c = customers[i];
+      if (c.wait === -1){ // 已服务，离开
+        c.x += (c.fromLeft ? -1 : 1) * 2.2 * dt;
+        if (Math.abs(c.x) > W + 80) customers.splice(i,1);
+        continue;
+      }
+      if (c.wait === 0){
+        var dx = c.tx - c.x;
+        c.x += Math.sign(dx) * Math.min(Math.abs(dx), 2.4 * dt);
+        if (Math.abs(dx) < 4){ c.wait = c.patience; }
+      } else {
+        c.wait -= dt;
+        if (c.wait <= 0){
+          c.mood = 0;
+          combo = 0;
+          floating.push({x:c.x,y:c.y-44,text:"等太久啦",life:1});
+          c.wait = -1;
+          updateHud();
+        }
+      }
+    }
+    // 补充柠檬
+    if (lemons.length < 5 && Math.random() < dt*1.6){
+      lemons.push({ x: W*0.14 + Math.random()*W*0.12, y: H*0.30 + Math.random()*H*0.30, rot: Math.random()*3 });
+    }
+    // 补充顾客
+    if (customers.length < 5 && Math.random() < dt*0.9) spawnCustomer();
+    // 粒子
+    for (var p=particles.length-1;p>=0;p--){
+      var q = particles[p];
+      q.life -= dt*1.2; q.x += q.vx*dt; q.y += q.vy*dt; q.vy += 20*dt;
+      if (q.life<=0) particles.splice(p,1);
+    }
+    for (var f2=confetti.length-1;f2>=0;f2--){
+      var cf = confetti[f2];
+      cf.life -= dt*0.7; cf.x += cf.vx*dt; cf.y += cf.vy*dt; cf.vy += 14*dt;
+      if (cf.life<=0) confetti.splice(f2,1);
+    }
+    updateHud();
+  }
+
+  function render(t){
+    dims();
+    drawBackground(t);
+    for (var i=0;i<lemons.length;i++) drawLemon(lemons[i]);
+    for (var j=0;j<customers.length;j++) drawCustomer(customers[j], t);
+    drawStall();
+    for (var k=0;k<particles.length;k++){
+      var q=particles[k];
+      ctx.globalAlpha=Math.max(0,q.life);
+      ctx.fillStyle="#FFD84D"; ctx.beginPath(); ctx.arc(q.x,q.y,3,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    for (var m=0;m<confetti.length;m++){
+      var cf=confetti[m];
+      ctx.globalAlpha=Math.max(0,cf.life);
+      ctx.fillStyle=cf.color; ctx.fillRect(cf.x,cf.y,6,9);
+    }
+    ctx.globalAlpha=1;
+    drawUI(t);
+  }
+
+  function loop(ts){
+    var dt = Math.min(0.05, (ts - last)/1000 || 0);
+    last = ts;
+    update(dt); render(ts);
+    requestAnimationFrame(loop);
+  }
+
+  // ── 结算 ────────────────────────────────────────────────────
+  function endGame(){
+    phase = "over";
+    var score = Math.round(Math.max(0, profit) * 10) + served * 20 + bestCombo * 15;
+    if (profit < 0) score = Math.max(0, score);
+    if (!badgeList.includes("小小摊主")) badgeList.push("小小摊主");
+    var rows = [
+      ["定价", "¥" + price.toFixed(1)],
+      ["成本", "¥" + cost.toFixed(1)],
+      ["卖出杯数", served + " 杯"],
+      ["总收入", "¥" + Math.round(income)],
+      ["利润", "¥" + Math.round(profit)],
+      ["最高连击", "×" + bestCombo]
+    ];
+    var html = '<h1>收摊啦！</h1><p>今天的账目</p>';
+    rows.forEach(function(r){ html += '<p><strong>'+r[0]+'：</strong>'+r[1]+'</p>'; });
+    html += '<p style="margin-top:12px">';
+    badgeList.forEach(function(b){ html += '<span class="chip">'+b+'</span>'; });
+    html += '</p><p style="color:#7E9AAE">利润 = 售价 − 成本。卖得多不一定赚得多。</p>';
+    html += '<button id="again">再开一摊</button>';
+    showPanel(html);
+    document.getElementById("again").onclick = function(){ reset(); hideOverlay(); };
+    // 回传结果
+    post({
+      score: score,
+      final_price: price,
+      profit: Math.round(profit),
+      rounds: served,
+      badges: badgeList,
+      task_completion: Math.min(1, served/8)
+    });
+  }
+
+  function showOverlay(){
+    var html = '<h1>柠檬水摊大作战</h1>' +
+      '<p>90 秒，摆好摊、定价、招揽顾客。</p>' +
+      '<p>① 拖动滑块定价（成本 ¥' + cost.toFixed(1) + '）<br>② 点柠檬做柠檬水<br>③ 点顾客把水递给他</p>' +
+      '<p style="color:#7E9AAE">连着卖出 3 杯以上会有彩带哦</p>' +
+      '<button id="start">开摊！</button>';
+    showPanel(html);
+    document.getElementById("start").onclick = function(){
+      hideOverlay(); phase = "play";
+    };
+  }
+  function showPanel(html){
+    var o = document.getElementById("overlay"), p = document.getElementById("panel");
+    p.innerHTML = html; o.style.display = "grid";
+  }
+  function hideOverlay(){ document.getElementById("overlay").style.display = "none"; }
+
+  // 独立打开时（招生演示）也能玩
+  if (window.parent === window) { session.ready = true; }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

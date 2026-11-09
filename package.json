@@ -1,0 +1,40 @@
+{
+  "name": "dreamcity-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "梦之城综合教学平台 · Classroom OS —— 线下 90 分钟课堂操作系统",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web",
+    "packages/seed"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:web",
+    "dev:server": "npm run dev -w @dreamcity/server",
+    "dev:web": "npm run dev -w @dreamcity/web",
+    "build": "npm run build -w @dreamcity/web",
+    "start": "npm run start -w @dreamcity/server",
+    "prod": "npm run build && npm run start",
+    "db:migrate": "npm run db:migrate -w @dreamcity/server",
+    "db:reset": "npm run db:reset -w @dreamcity/server",
+    "seed": "npm run seed -w @dreamcity/seed",
+    "seed:content": "npm run seed:content -w @dreamcity/seed",
+    "create:teacher": "npm run create:teacher -w @dreamcity/seed",
+    "extract:lessons": "python tools/extract-lessons.py",
+    "typecheck": "npm run typecheck -w @dreamcity/shared && npm run typecheck -w @dreamcity/server && npm run typecheck -w @dreamcity/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:constraints": "node tools/check-constraints/run.mjs",
+    "verify": "npm run typecheck && npm test && npm run check:constraints"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "typescript": "~5.9.0",
+    "vitest": "^5.1.0"
+  }
+}

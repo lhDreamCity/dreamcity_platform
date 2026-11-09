@@ -1,0 +1,99 @@
+# 梦之城综合教学平台 · 生产部署栈
+#
+#   db      PostgreSQL 16   （内部网络，不对外）
+#   redis   Redis 7         （内部网络，不对外）
+#   app     平台本体        （只 expose，不发布主机端口 —— 公网只能经 Caddy 进）
+#
+# app 同时接在 proxy 网络上，供主机上的 Caddy 反代。
+# 与其它服务不共享数据卷与数据库，互不影响。
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dreamcity-platform-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dreamcity}
+      POSTGRES_USER: ${POSTGRES_USER:-dreamcity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 必须设置}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [platform]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dreamcity} -d ${POSTGRES_DB:-dreamcity}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: dreamcity-platform-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD 必须设置}
+    volumes:
+      - redis-data:/data
+    networks: [platform]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: dreamcity/platform:1.0.0
+    container_name: dreamcity-platform
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      SERVER_PORT: "8787"
+      DATABASE_DRIVER: pg
+      DATABASE_URL: postgres://${POSTGRES_USER:-dreamcity}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dreamcity}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必须设置}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://platform.lhdreamcity.com}
+      TOKEN_TTL_MINUTES: "720"
+      # 作品与课件：先落本地卷，接 COS 只需改这两项 + 补 S3_* 环境变量
+      OBJECT_STORE_DRIVER: ${OBJECT_STORE_DRIVER:-local}
+      OBJECT_STORE_DIR: /app/var/objects
+      # 家长短信：未接腾讯云前用 log（验证码打日志），生产务必换成 tencent
+      SMS_DRIVER: ${SMS_DRIVER:-log}
+    volumes:
+      - objects:/app/var/objects
+    networks: [platform, proxy]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  db-data:
+  redis-data:
+  objects:
+
+networks:
+  platform:
+    name: dreamcity-platform
+  proxy:
+    external: true
+    name: proxy

@@ -1,0 +1,126 @@
+{
+  "$comment": "活动插件注册表。活动 = 独立单文件 HTML + manifest + postMessage 回传。教研以后加课眼不用等研发排期。",
+  "plugins": [
+    {
+      "id": "lemon-stand",
+      "name": "柠檬水摊大作战",
+      "version": "1.0.0",
+      "lesson_refs": [
+        "L1-10",
+        "L1-13",
+        "L2-10",
+        "L3-13"
+      ],
+      "mode_cards": [
+        "MODE_M2",
+        "MODE_M3"
+      ],
+      "duration_min": 12,
+      "entry": "lemon-stand.html",
+      "standalone": true,
+      "result_schema": {
+        "score": "number",
+        "final_price": "number",
+        "profit": "number",
+        "rounds": "number",
+        "badges": "string[]",
+        "task_completion": "number"
+      },
+      "artifact_fields": [
+        "final_price",
+        "profit",
+        "badges"
+      ],
+      "offline_fallback": "任务单 P10（打印版）：画出你的定价表并写出成本、售价、利润",
+      "fallback_2d": true,
+      "grades": [
+        "GRADE_L1",
+        "GRADE_L2",
+        "GRADE_L3"
+      ],
+      "result_optional": [
+        "task_completion"
+      ]
+    },
+    {
+      "id": "prompt-quest",
+      "name": "提示词闯关",
+      "version": "1.0.0",
+      "lesson_refs": [
+        "L1-04",
+        "L2-04",
+        "L3-03"
+      ],
+      "mode_cards": [
+        "MODE_M2",
+        "MODE_M5"
+      ],
+      "duration_min": 10,
+      "entry": "prompt-quest.html",
+      "standalone": true,
+      "result_schema": {
+        "score": "number",
+        "levels_cleared": "number",
+        "badges": "string[]",
+        "task_completion": "number"
+      },
+      "artifact_fields": [
+        "levels_cleared",
+        "badges"
+      ],
+      "offline_fallback": "任务单 P04（打印版）：写下你的第一条提示词，并标出角色、任务、格式",
+      "fallback_2d": true,
+      "grades": [
+        "GRADE_L1",
+        "GRADE_L2",
+        "GRADE_L3"
+      ],
+      "result_optional": [
+        "task_completion"
+      ]
+    },
+    {
+      "id": "var-lab-2d",
+      "name": "太阳系变量实验室",
+      "version": "1.0.0",
+      "lesson_refs": [
+        "L1-02",
+        "L2-01",
+        "L2-03",
+        "L3-01",
+        "L3-04"
+      ],
+      "mode_cards": [
+        "MODE_M1",
+        "MODE_M2",
+        "MODE_M6"
+      ],
+      "duration_min": 15,
+      "entry": "var-lab-2d.html",
+      "standalone": true,
+      "result_schema": {
+        "score": "number",
+        "prediction": "string",
+        "observations": "number",
+        "badges": "string[]",
+        "task_completion": "number"
+      },
+      "artifact_fields": [
+        "prediction",
+        "observations",
+        "badges"
+      ],
+      "offline_fallback": "任务单 P02（打印版）：先预测，再记录三次实验的数据",
+      "fallback_2d": true,
+      "grades": [
+        "GRADE_L1",
+        "GRADE_L2",
+        "GRADE_L3"
+      ],
+      "$comment": "本版为 2D Canvas 顶视图。3D 版用同一份 manifest 接入即可，平台侧不需要改。",
+      "result_optional": [
+        "task_completion"
+      ]
+    }
+  ]
+}

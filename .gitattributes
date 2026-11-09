@@ -1,0 +1,22 @@
+# 统一按 LF 存储与检出（部署目标是 Linux / Docker，避免 CRLF 影响脚本与构建）
+* text=auto eol=lf
+
+# 二进制资源，不做换行转换
+*.jpg binary
+*.png binary
+*.docx binary
+*.zip binary
+*.gz binary
+
+# 脚本强制 LF，否则 Windows 上可能因 CRLF 无法执行
+*.sh text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.yml text eol=lf
+*.sql text eol=lf

@@ -1,0 +1,21 @@
+{
+  "name": "@dreamcity/seed",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "tsx src/seed.ts",
+    "seed:content": "tsx src/seed.ts --no-demo",
+    "create:teacher": "tsx src/create-teacher.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@dreamcity/server": "*",
+    "@dreamcity/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.0"
+  }
+}

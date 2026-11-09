@@ -1,0 +1,33 @@
+{
+  "name": "@dreamcity/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "db:migrate": "tsx src/db/cli/migrate.ts",
+    "db:reset": "tsx src/db/cli/reset.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@dreamcity/shared": "*",
+    "@electric-sql/pglite": "^0.5.15",
+    "@fastify/cors": "^11.4.1",
+    "@fastify/static": "^8.2.0",
+    "@aws-sdk/client-s3": "^3.1163.0",
+    "@aws-sdk/s3-request-presigner": "^3.1163.0",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "tsx": "^4.19.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.11.10",
+    "typescript": "~5.9.0"
+  }
+}

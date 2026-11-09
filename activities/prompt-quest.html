@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>提示词闯关</title>
+<style>
+  /* 单文件 · 零外部 CDN · 零后端请求（C3） */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0B1B2C;font-family:"Microsoft YaHei","微软雅黑",system-ui,sans-serif;color:#fff}
+  #wrap{max-width:900px;margin:0 auto;padding:24px;min-height:100%;display:flex;flex-direction:column;gap:16px}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .chip{background:#16345A;border:2px solid #7C6BFF;border-radius:24px;padding:5px 16px;font-size:14px;color:#C7DCEC}
+  h1{font-size:24px}
+  .stage{background:#16345A;border:1px solid #2A4E77;border-radius:16px;padding:22px 26px}
+  .stage h2{font-size:19px;color:#FFD84D;margin-bottom:10px}
+  .stage p{font-size:15px;color:#B9D2E6;line-height:1.85}
+  .req{background:rgba(11,27,44,.55);border-left:3px solid #22D3EE;border-radius:8px;padding:12px 16px;margin-top:14px;font-size:14px;color:#C7DCEC}
+  textarea{width:100%;min-height:110px;background:#0B1B2C;border:1px solid #2A4E77;border-radius:12px;color:#fff;font-family:inherit;font-size:15px;padding:14px;resize:vertical}
+  textarea:focus{outline:2px solid #7C6BFF}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  button{font-family:inherit;font-size:16px;font-weight:700;color:#fff;background:#7C6BFF;border:none;border-radius:24px;padding:11px 28px;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid #2A4E77;color:#B9D2E6}
+  button:hover{background:#22D3EE;color:#123046}
+  .hints{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:#B9D2E6}
+  .hints span{background:rgba(11,27,44,.5);border-radius:999px;padding:4px 12px}
+  .hints span.on{background:#4ADE9B;color:#0B1B2C;font-weight:700}
+  #feedback{margin-top:14px;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.8;display:none}
+  #feedback.good{background:rgba(74,222,155,.14);border:1px solid #4ADE9B;color:#B9D2E6;display:block}
+  #feedback.try{background:rgba(255,216,77,.12);border:1px solid #FFD84D;color:#B9D2E6;display:block}
+  #progress{display:flex;gap:8px;align-items:center;font-size:13px;color:#7E9AAE}
+  #progress b{width:26px;height:8px;border-radius:99px;background:#2A4E77;display:inline-block}
+  #progress b.done{background:#7C6BFF}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>提示词闯关</h1>
+    <span class="chip" id="levelChip">第 1 关 / 3</span>
+    <span class="chip" id="scoreChip">得分 0</span>
+  </header>
+  <div id="progress"></div>
+
+  <div class="stage">
+    <h2 id="taskTitle"></h2>
+    <p id="taskDesc"></p>
+    <div class="req" id="taskReq"></div>
+  </div>
+
+  <div>
+    <div class="hints" id="hints">
+      <span data-k="role">说清「你是谁」</span>
+      <span data-k="task">说清「做什么」</span>
+      <span data-k="format">说清「做成什么样」</span>
+    </div>
+    <textarea id="input" placeholder="把你的提示词写在这里…"></textarea>
+  </div>
+
+  <div class="row">
+    <button id="submit">交上去</button>
+    <button class="ghost" id="hintBtn">给我一个提示</button>
+    <button class="ghost" id="skip">先跳过这一关</button>
+  </div>
+
+  <div id="feedback"></div>
+</div>
+<script>
+(function(){
+  "use strict";
+  var ACTIVITY_ID = "prompt-quest";
+  var session = { sessionId:null, studentId:null, ready:false };
+  window.addEventListener("message", function(e){
+    if (!e.data || e.data.type !== "dreamcity:host:init") return;
+    session.sessionId = e.data.sessionId;
+    session.studentId = e.data.studentId || null;
+    session.ready = true;
+  });
+  function post(payload){
+    if (!session.ready) return;
+    parent.postMessage({
+      type:"dreamcity:activity:result", activityId:ACTIVITY_ID,
+      sessionId:session.sessionId, studentId:session.studentId,
+      payload:payload, visibility:"VIS_L0", ts:Date.now()
+    }, "*");
+  }
+
+  // ── 关卡定义（对应 L1-04 / L2-04 / L3-03 的教学点）────────────
+  var LEVELS = [
+    {
+      title:"第 1 关 · 把问题说清楚",
+      desc:"小明问 AI：「帮我写个作业」。AI 什么也没写出来，因为任务没说清楚。",
+      req:"请让 AI 帮你写一份 3 句话的『我的 AI 发现清单』，给 4 年级的小朋友看。",
+      must:["role","task","format"],
+      example:"你是一位懂小朋友的老师。请帮我写一份『我的 AI 发现清单』，用 3 句话，每句话写清楚一个 AI 在帮谁做什么。",
+      tip:"先说『你是一位……』，再说要做什么，最后说要什么样子。"
+    },
+    {
+      title:"第 2 关 · 给 AI 装上身份",
+      desc:"同一个问题，让不同的人回答会完全不同。给 AI 一个身份，它才会用对的语气。",
+      req:"请让 AI 扮演一位耐心的编程老师，给一个 5 年级的同学讲『什么是训练数据』，讲的时候举一个生活中的例子。",
+      must:["role","task","format"],
+      example:"你是一位耐心的编程老师。请给一位 5 年级同学讲『什么是训练数据』，要多举一个生活中的例子，语气亲切一点。",
+      tip:"给身份之后，再说清楚给谁听、要多长、什么格式。"
+    },
+    {
+      title:"第 3 关 · 加上要求与格式",
+      desc:"最厉害的提示词，会把『怎么回答』也规定好：长度、格式、要不要举例。",
+      req:"请让 AI 扮演创业课老师，列出 3 条开一家柠檬水摊需要注意的事，每条一行，要包含成本和定价。",
+      must:["role","task","format"],
+      example:"你是一位创业课老师。请列出 3 条开柠檬水摊要注意的事，每条一行，必须包含成本和定价两件事。",
+      tip:"「每条一行」「必须包含」这类话，就是格式要求。"
+    }
+  ];
+
+  var idx = 0, score = 0, cleared = 0, badges = [], done = false;
+
+  function render(){
+    var lv = LEVELS[idx];
+    document.getElementById("levelChip").textContent = "第 " + (idx+1) + " 关 / " + LEVELS.length;
+    document.getElementById("scoreChip").textContent = "得分 " + score;
+    document.getElementById("taskTitle").textContent = lv.title;
+    document.getElementById("taskDesc").textContent = lv.desc;
+    document.getElementById("taskReq").textContent = "你要让 AI 做到：" + lv.req;
+    document.getElementById("feedback").className = "";
+    document.getElementById("feedback").style.display = "none";
+    var p = document.getElementById("progress");
+    p.innerHTML = "";
+    for (var i=0;i<LEVELS.length;i++){
+      var b = document.createElement("b");
+      if (i < cleared) b.className = "done";
+      p.appendChild(b);
+    }
+    var l = document.createElement("span");
+    l.textContent = "已过 " + cleared + " 关";
+    p.appendChild(l);
+    checkHints();
+  }
+
+  // ── 规则模拟判分：看三件事 ────────────────────────────────────
+  function checkHints(){
+    var text = document.getElementById("input").value;
+    var spans = document.querySelectorAll("#hints span");
+    var lv = LEVELS[idx];
+    for (var i=0;i<spans.length;i++){
+      var k = spans[i].getAttribute("data-k");
+      var ok = false;
+      if (k === "role") ok = /(你(是|扮演|来当)|作为|请以)/.test(text);
+      if (k === "task")  ok = text.length >= 15 && /(请|帮我|写|讲|列|做|生成|解释)/.test(text);
+      if (k === "format") ok = /(句|行|条|字|列表|表格|格式|包含|不要|每)/.test(text);
+      spans[i].className = ok ? "on" : "";
+    }
+  }
+  document.getElementById("input").addEventListener("input", checkHints);
+
+  function judge(text){
+    var lv = LEVELS[idx];
+    var hit = 0, missing = [];
+    var role = /(你(是|扮演|来当)|作为|请以)/.test(text);
+    var task = text.length >= 15 && /(请|帮我|写|讲|列|做|生成|解释)/.test(text);
+    var format = /(句|行|条|字|列表|表格|格式|包含|不要|每)/.test(text);
+    if (role) hit++; else missing.push("没有说「你是谁」");
+    if (task) hit++; else missing.push("没有说清楚要做什么");
+    if (format) hit++; else missing.push("没有说清楚要什么格式");
+    return { hit: hit, missing: missing, role: role, task: task, format: format };
+  }
+
+  function finish(){
+    done = true;
+    if (!badges.indexOf("提问小能手") && cleared >= 2) badges.push("提问小能手");
+    if (!badges.indexOf("三段式高手") && cleared === LEVELS.length) badges.push("三段式高手");
+    var fb = document.getElementById("feedback");
+    fb.className = "good";
+    fb.style.display = "block";
+    fb.innerHTML = "<strong>全部通关！</strong><br>你用了 " + cleared + " 关，拿到 " + badges.join("、") + "。<br>" +
+      "下一节课我们把这些提示词真的用一次，看看 AI 到底听不听话。";
+    document.getElementById("submit").disabled = true;
+    post({
+      score: score,
+      levels_cleared: cleared,
+      badges: badges,
+      task_completion: cleared / LEVELS.length
+    });
+  }
+
+  document.getElementById("submit").onclick = function(){
+    if (done) return;
+    var text = document.getElementById("input").value.trim();
+    var fb = document.getElementById("feedback");
+    if (!text) { fb.className="try"; fb.style.display="block"; fb.textContent="先写一句试试。"; return; }
+    var r = judge(text);
+    if (r.hit === 3){
+      score += 50; cleared++; idx++;
+      fb.className = "good"; fb.style.display = "block";
+      if (idx >= LEVELS.length) { render(); finish(); return; }
+      fb.innerHTML = "<strong>过关！</strong> 这一关你把三件事都说清楚了。<br>下一关：" + LEVELS[idx].title;
+      render();
+    } else {
+      score += Math.max(0, r.hit * 10);
+      fb.className = "try"; fb.style.display = "block";
+      fb.innerHTML = "<strong>还差一点点。</strong> 少了：" + r.missing.join("、") + "。<br>改一改再来一次。";
+      document.getElementById("scoreChip").textContent = "得分 " + score;
+    }
+  };
+
+  document.getElementById("hintBtn").onclick = function(){
+    var fb = document.getElementById("feedback");
+    fb.className = "try"; fb.style.display = "block";
+    fb.innerHTML = "<strong>提示：</strong>" + LEVELS[idx].tip + "<br>参考写法：「" + LEVELS[idx].example + "」";
+  };
+
+  document.getElementById("skip").onclick = function(){
+    if (done) return;
+    idx++; score = Math.max(0, score - 5);
+    if (idx >= LEVELS.length){ render(); finish(); return; }
+    render();
+  };
+
+  render();
+  if (window.parent === window) { session.ready = true; }
+})();
+</script>
+</body>
+</html>

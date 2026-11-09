@@ -1,0 +1,92 @@
+/* ══════════════════════════════════════════════════════════════
+   梦之城 · 设计令牌
+   数值来自 6 份 PPTX 的 OOXML 实测提取（见 content/ppt_design_system.md）：
+   唯一字族微软雅黑；1pt 描边 #DCE9F1；唯一阴影 0 4px 11px rgba(11,27,44,.22)；
+   三级主色 L1 蓝 / L2 紫 / L3 橙；胶囊 chip + 圆形编号徽章。
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 中性色（跨级别共享）────────────────────────────── */
+  --ink: #123046;          /* 主标题深蓝墨 */
+  --body: #4A6B80;         /* 正文石板灰蓝 */
+  --muted: #7E9AAE;        /* 次级说明、页脚 */
+  --line: #DCE9F1;         /* 全站唯一描边色 */
+  --paper: #F2F8FD;        /* 极浅填充、斑马行 */
+  --paper-2: #EAF3FF;
+  --white: #FFFFFF;
+  --deep: #0B1B2C;         /* 唯一阴影色 */
+  --deep-btn: #16345A;     /* 深底按钮填充 */
+  --deep-text: #C7DCEC;    /* 深底按钮文字 */
+  --deep-sub: #B9D2E6;     /* 深底页次级文字 */
+  --deep-line: #2A4E77;    /* 深底页分隔线 */
+
+  /* ── 级别主色 / 次色 ───────────────────────────────── */
+  --l1: #2E7CF6;   --l1-2: #22D3EE;
+  --l2: #7C6BFF;   --l2-2: #2E7CF6;
+  --l3: #F2A33C;   --l3-2: #FF7A6B;
+
+  /* ── 三级共用强调色 ────────────────────────────────── */
+  --star: #FFD84D;
+  --mint: #4ADE9B;
+  --warm: #FFF6DC;
+  --warm-line: #F2DFA0;
+
+  /* ── 圆角（adj 换算：144 px/in）────────────────────── */
+  --r-chip: 24px;   /* adj 50000 全胶囊 */
+  --r-btn: 16px;    /* adj 12000 深底按钮 */
+  --r-card: 18px;   /* adj 10000 主卡片 */
+  --r-row: 12px;    /* adj 9000  行卡 */
+  --r-small: 8px;   /* adj 6000  斑马行 */
+
+  /* ── 阴影（全站唯一规格）───────────────────────────── */
+  --shadow: 0 4px 11px rgba(11, 27, 44, 0.22);
+  --shadow-soft: 0 2px 6px rgba(11, 27, 44, 0.10);
+
+  /* ── 字号阶梯（pt → px）────────────────────────────── */
+  --fs-hero: 41px;
+  --fs-title: 29px;
+  --fs-subtitle: 20px;
+  --fs-card: 16px;
+  --fs-body: 14px;
+  --fs-chip: 11px;
+  --fs-foot: 10px;
+
+  /* ── 栅格 ───────────────────────────────────────────── */
+  --gutter: 24px;
+  --maxw: 1180px;
+
+  /* ── 当前级别的强调色（由 data-level 覆盖）─────────── */
+  --accent: var(--l1);
+  --accent-2: var(--l1-2);
+}
+
+[data-level='GRADE_L1'] { --accent: var(--l1); --accent-2: var(--l1-2); }
+[data-level='GRADE_L2'] { --accent: var(--l2); --accent-2: var(--l2-2); }
+[data-level='GRADE_L3'] { --accent: var(--l3); --accent-2: var(--l3-2); }
+
+:root {
+  --font: "Microsoft YaHei", "微软雅黑", "PingFang SC", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button, input, textarea, select { font-family: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

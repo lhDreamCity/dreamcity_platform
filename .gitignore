@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+var/
+*.log
+.DS_Store
+.vite/
+coverage/
+_research/
+*.tar.gz
