@@ -25,7 +25,6 @@ export function Landing() {
             </p>
 
             <div className="row" style={{ marginTop: 28 }}>
-              <Link className="btn" to="/teacher/login">讲师入口</Link>
               <Link className="btn deep" to="/guardian/login">家长入口</Link>
               <Link className="btn deep" to="/student/enter">学生入口</Link>
             </div>

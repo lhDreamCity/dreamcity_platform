@@ -5,10 +5,10 @@ import { api } from '../lib/api';
 import { Avatar, Empty, TopBar } from '../shared-ui';
 
 const NAV = [
-  { to: '/teacher/lessons', label: TEACHER.nav.lessons },
-  { to: '/teacher/sessions', label: TEACHER.nav.sessions },
-  { to: '/teacher/students', label: TEACHER.nav.students },
-  { to: '/teacher/plugins', label: TEACHER.nav.plugins },
+  { to: '/console/lessons', label: TEACHER.nav.lessons },
+  { to: '/console/sessions', label: TEACHER.nav.sessions },
+  { to: '/console/students', label: TEACHER.nav.students },
+  { to: '/console/plugins', label: TEACHER.nav.plugins },
 ];
 
 interface StudentRow {
@@ -45,7 +45,7 @@ export function StudentDirectory() {
 
   return (
     <div>
-      <TopBar nav={NAV} active="/teacher/students" />
+      <TopBar nav={NAV} active="/console/students" />
       <div className="wrap" style={{ paddingBottom: 60 }}>
         <div className="page-head">
           <h1>{TEACHER.studentsTitle}</h1>

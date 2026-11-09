@@ -42,9 +42,15 @@ npm run dev            # 后端 :8787 + 前端 :5173
 
 | 入口 | 地址 | 演示账号 |
 |---|---|---|
-| 讲师 | `/teacher/login` | `teacher@dreamcity.cn` / `dreamcity-demo` |
 | 家长 | `/guardian/login` | 手机号 `13800000001`，验证码 `00000`（开发模式） |
 | 学生 | `/student/enter` | 课堂码进入后点头像，不用密码 |
+| 后台（讲师 / 运营） | `/console` | `admin` / `123456`（开发占位，见下） |
+
+> **后台是隐藏入口**：落地页只给家长和学生两个按钮，讲师后台的地址不出现在页面上，
+> 要自己敲 `/console` 进来，进来还得过账号密码这一关。
+> 真实讲师账号用 `npm run create:teacher` 建（邮箱 + 密码）。
+> 占位账号由 `ADMIN_USER` / `ADMIN_PASSWORD` 控制（默认 `admin` / `123456`），
+> 改 env 立刻生效；`ADMIN_ENABLED=false` 则彻底关掉这个账号。
 
 > ⚠️ **PGlite 是单进程数据库**：`npm run seed` 之前要先停掉后端，
 > 否则两个进程会同时写同一个数据目录把库写坏。生产用真 PostgreSQL 时没有这个限制。
@@ -77,7 +83,7 @@ packages/
   server/   Fastify 单体模块化 + drizzle + PGlite/pg 双驱动
             modules/ auth · content · session · artifact · guardian · student · ops
   web/      Vite + React，三端同域不同路径
-            teacher/（讲师） guardian/（家长） student/（学生）
+            teacher/（讲师后台 /console） guardian/（家长） student/（学生）
   seed/     48 节课入库与演示数据
 activities/ 活动插件：原生单文件 HTML + manifest + postMessage 回传
 tools/      细案抽取 · 端到端冒烟测试 · 硬约束检查
@@ -150,6 +156,7 @@ docs/       开发上下文 · 数据模型 · 插件规范 · 硬约束检查�
 | 柠檬水摊大作战 | L1-10 / L1-13 / L2-10 / L3-13 | 定价、成本、利润、甜蜜点（90 秒经营） |
 | 提示词闯关 | L1-04 / L2-04 / L3-03 | 角色 · 任务 · 格式 三段式 |
 | 太阳系变量实验室（2D） | L1-02 / L2-01 / L3-01 | 导入 → 预测 → 实验 → 记录 → 收尾 |
+| 太阳系变量实验室（3D） | 同上 | 同一套教学逻辑，WebGL 渲染，投屏机不支持时自动降级到 2D |
 
 教研以后加课眼不用等研发排期：写一个单文件 HTML + manifest，
 `POST /api/plugins` 校验通过即可上架。详见 `docs/插件规范.md`。
@@ -175,7 +182,8 @@ node tools/smoke-test.mjs   # 端到端冒烟（需先启动后端，34 项）
 
 录播课 · 直播课 · 独立 App · 开放注册 · 私信 / 关注 / 粉丝 · 点赞计数与人气榜 ·
 公开可检索 · 无限滚动信息流 · 题库刷题与自动排名 · AI 自动评分替代教师评价 ·
-全站 3D/WebGL · 自建视频转码 · 自建 IM 与社群 · 复杂权限矩阵与多租户 · 在线支付。
+全站 3D/WebGL（活动内部的 3D 渲染除外，站点界面本身不做 3D）· 自建视频转码 ·
+自建 IM 与社群 · 复杂权限矩阵与多租户 · 在线支付。
 
 ---
 

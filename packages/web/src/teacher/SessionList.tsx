@@ -6,9 +6,9 @@ import { api } from '../lib/api';
 import { Empty, TopBar } from '../shared-ui';
 
 const NAV = [
-  { to: '/teacher/lessons', label: TEACHER.nav.lessons },
-  { to: '/teacher/sessions', label: TEACHER.nav.sessions },
-  { to: '/teacher/plugins', label: TEACHER.nav.plugins },
+  { to: '/console/lessons', label: TEACHER.nav.lessons },
+  { to: '/console/sessions', label: TEACHER.nav.sessions },
+  { to: '/console/plugins', label: TEACHER.nav.plugins },
 ];
 
 interface SessionRow {
@@ -49,7 +49,7 @@ export function SessionList() {
 
   return (
     <div>
-      <TopBar nav={NAV} active="/teacher/sessions" />
+      <TopBar nav={NAV} active="/console/sessions" />
       <div className="wrap" style={{ paddingBottom: 60 }}>
         <div className="page-head">
           <h1>{TEACHER.sessionsTitle}</h1>
@@ -75,7 +75,7 @@ export function SessionList() {
                 {rows.map((s) => (
                   <tr key={s.id}>
                     <td>
-                      <Link to={`/teacher/sessions/${s.id}`} className="strong">
+                      <Link to={`/console/sessions/${s.id}`} className="strong">
                         {s.lessonTitle}
                       </Link>
                       <div className="tiny muted">{s.lessonId}</div>
@@ -107,7 +107,7 @@ export function SessionList() {
                       {s.startedAt ? new Date(s.startedAt).toLocaleString('zh-CN') : '—'}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <Link className="btn sm ghost" to={`/teacher/sessions/${s.id}`}>
+                      <Link className="btn sm ghost" to={`/console/sessions/${s.id}`}>
                         {s.state === 'DRAFT' ? '去开课' : '回看'}
                       </Link>
                     </td>

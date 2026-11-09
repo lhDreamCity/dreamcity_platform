@@ -17,6 +17,8 @@ import {
   type LessonPlanContent,
 } from '@dreamcity/shared';
 import { getDb, schema, runMigrations } from '@dreamcity/server';
+import { ensureAdminAccount } from '@dreamcity/server';
+import { ADMIN_USING_DEFAULT_PASSWORD, env } from '@dreamcity/server';
 
 interface LessonsFile {
   lessonCount: number;
@@ -65,6 +67,18 @@ async function main(): Promise<void> {
   const applied = await runMigrations();
   if (applied.length > 0) {
     console.log(`✓ 已执行 ${applied.length} 个迁移：${applied.join(', ')}`);
+  }
+
+  // 后台占位账号：与 env 对齐（幂等）。短信没接上时，这是唯一的后台入口。
+  await ensureAdminAccount();
+  if (env.admin.enabled) {
+    console.log(
+      ADMIN_USING_DEFAULT_PASSWORD
+        ? `✓ 后台占位账号已就位：${env.admin.user}（口令为开发默认值，正式用前请设 ADMIN_PASSWORD）`
+        : `✓ 后台占位账号已就位：${env.admin.user}（口令取自 ADMIN_PASSWORD）`,
+    );
+  } else {
+    console.log('✓ 后台占位账号已关闭（ADMIN_ENABLED=false）');
   }
 
   await seedContent();

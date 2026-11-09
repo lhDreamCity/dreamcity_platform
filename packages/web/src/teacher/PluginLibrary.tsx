@@ -4,9 +4,9 @@ import { api } from '../lib/api';
 import { Empty, TopBar } from '../shared-ui';
 
 const NAV = [
-  { to: '/teacher/lessons', label: TEACHER.nav.lessons },
-  { to: '/teacher/sessions', label: TEACHER.nav.sessions },
-  { to: '/teacher/plugins', label: TEACHER.nav.plugins },
+  { to: '/console/lessons', label: TEACHER.nav.lessons },
+  { to: '/console/sessions', label: TEACHER.nav.sessions },
+  { to: '/console/plugins', label: TEACHER.nav.plugins },
 ];
 
 interface PluginRow {
@@ -32,7 +32,7 @@ export function PluginLibrary() {
 
   return (
     <div>
-      <TopBar nav={NAV} active="/teacher/plugins" />
+      <TopBar nav={NAV} active="/console/plugins" />
       <div className="wrap" style={{ paddingBottom: 60 }}>
         <div className="page-head">
           <h1>{TEACHER.nav.plugins}</h1>

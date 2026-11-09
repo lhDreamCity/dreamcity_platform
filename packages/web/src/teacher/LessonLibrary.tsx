@@ -17,9 +17,9 @@ interface LessonRow {
 }
 
 const NAV = [
-  { to: '/teacher/lessons', label: TEACHER.nav.lessons },
-  { to: '/teacher/sessions', label: TEACHER.nav.sessions },
-  { to: '/teacher/plugins', label: TEACHER.nav.plugins },
+  { to: '/console/lessons', label: TEACHER.nav.lessons },
+  { to: '/console/sessions', label: TEACHER.nav.sessions },
+  { to: '/console/plugins', label: TEACHER.nav.plugins },
 ];
 
 export function LessonLibrary() {
@@ -50,7 +50,7 @@ export function LessonLibrary() {
 
   return (
     <div data-level={level || 'GRADE_L1'}>
-      <TopBar nav={NAV} active="/teacher/lessons" level={level || 'GRADE_L1'} />
+      <TopBar nav={NAV} active="/console/lessons" level={level || 'GRADE_L1'} />
       <div className="wrap" style={{ paddingBottom: 60 }}>
         <div className="page-head">
           <h1>{TEACHER.lessonsTitle}</h1>
@@ -119,7 +119,7 @@ export function LessonLibrary() {
                                 <span className="tiny muted">{l.id}</span>
                               </td>
                               <td>
-                                <Link to={`/teacher/lessons/${l.id}`} className="strong">
+                                <Link to={`/console/lessons/${l.id}`} className="strong">
                                   {l.title}
                                 </Link>
                                 {l.output ? (
@@ -132,7 +132,7 @@ export function LessonLibrary() {
                                 {l.defaultRecipe ? <span className="chip ghost">{l.defaultRecipe}</span> : null}
                               </td>
                               <td style={{ width: 92, textAlign: 'right' }}>
-                                <Link className="btn sm ghost" to={`/teacher/lessons/${l.id}`}>
+                                <Link className="btn sm ghost" to={`/console/lessons/${l.id}`}>
                                   编排
                                 </Link>
                               </td>
@@ -148,7 +148,7 @@ export function LessonLibrary() {
         )}
 
         <div className="row" style={{ marginTop: 28 }}>
-          <button className="btn" onClick={() => navigate('/teacher/sessions')}>
+          <button className="btn" onClick={() => navigate('/console/sessions')}>
             去上课记录
           </button>
         </div>

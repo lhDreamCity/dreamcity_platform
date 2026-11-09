@@ -15,9 +15,9 @@ import { api } from '../lib/api';
 import { Empty, LevelChip, TopBar } from '../shared-ui';
 
 const NAV = [
-  { to: '/teacher/lessons', label: TEACHER.nav.lessons },
-  { to: '/teacher/sessions', label: TEACHER.nav.sessions },
-  { to: '/teacher/plugins', label: TEACHER.nav.plugins },
+  { to: '/console/lessons', label: TEACHER.nav.lessons },
+  { to: '/console/sessions', label: TEACHER.nav.sessions },
+  { to: '/console/plugins', label: TEACHER.nav.plugins },
 ];
 
 interface PlanSegment {
@@ -231,7 +231,7 @@ export function LessonPlanner() {
   if (!lesson.data) {
     return (
       <div>
-        <TopBar nav={NAV} active="/teacher/lessons" />
+        <TopBar nav={NAV} active="/console/lessons" />
         <div className="wrap">
           <Empty>正在加载课次…</Empty>
         </div>
@@ -246,7 +246,7 @@ export function LessonPlanner() {
 
   return (
     <div data-level={lesson.data.levelId}>
-      <TopBar nav={NAV} active="/teacher/lessons" level={lesson.data.levelId} />
+      <TopBar nav={NAV} active="/console/lessons" level={lesson.data.levelId} />
       <div className="wrap" style={{ paddingBottom: 60 }}>
         <div className="page-head">
           <div className="row" style={{ marginBottom: 6 }}>
@@ -272,7 +272,7 @@ export function LessonPlanner() {
             className="btn ghost"
             onClick={() => {
               save.mutate(undefined, {
-                onSuccess: (sid) => navigate(`/teacher/sessions/${sid}`),
+                onSuccess: (sid) => navigate(`/console/sessions/${sid}`),
               });
             }}
             disabled={save.isPending}

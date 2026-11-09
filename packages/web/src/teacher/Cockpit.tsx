@@ -7,9 +7,9 @@ import { Avatar, Empty, TopBar } from '../shared-ui';
 import { ActivityHost } from './ActivityHost';
 
 const NAV = [
-  { to: '/teacher/lessons', label: TEACHER.nav.lessons },
-  { to: '/teacher/sessions', label: TEACHER.nav.sessions },
-  { to: '/teacher/plugins', label: TEACHER.nav.plugins },
+  { to: '/console/lessons', label: TEACHER.nav.lessons },
+  { to: '/console/sessions', label: TEACHER.nav.sessions },
+  { to: '/console/plugins', label: TEACHER.nav.plugins },
 ];
 
 interface CockpitState {
@@ -177,7 +177,7 @@ export function Cockpit() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sessions'] });
-      navigate('/teacher/sessions');
+      navigate('/console/sessions');
     },
   });
 
@@ -212,7 +212,7 @@ export function Cockpit() {
   if (!state) {
     return (
       <div>
-        <TopBar nav={NAV} active="/teacher/sessions" />
+        <TopBar nav={NAV} active="/console/sessions" />
         <div className="wrap">
           <Empty>正在加载驾驶舱…</Empty>
         </div>

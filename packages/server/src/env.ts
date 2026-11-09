@@ -60,6 +60,21 @@ export const env = {
     ttlMinutes: num('TOKEN_TTL_MINUTES', 720),
   },
 
+  /**
+   * 后台占位账号（讲师 / 运营 / 管理员）。
+   *
+   * 讲师后台走隐藏 URL + 账号密码双闸。真实讲师账号用 create-teacher.ts 建，
+   * 这里只保证「至少有一个能进后台的账号」，不依赖任何外部服务。
+   *
+   * ⚠️ 开发阶段的占位口令。正式使用前必须改：
+   *    ADMIN_PASSWORD=<自己的口令>  ADMIN_ENABLED=false 都能改/关。
+   */
+  admin: {
+    enabled: str('ADMIN_ENABLED', 'true').toLowerCase() !== 'false',
+    user: str('ADMIN_USER', 'admin'),
+    password: str('ADMIN_PASSWORD', '123456'),
+  },
+
   sms: {
     driver: str('SMS_DRIVER', 'log') as 'log' | 'tencent',
     appId: str('SMS_APP_ID', ''),
@@ -83,10 +98,15 @@ export const env = {
 } as const;
 
 /**
+ * 占位口令是否还在用。
+ * 开发阶段允许，真上业务前必须换掉 —— 换法：设 ADMIN_PASSWORD。
+ */
+export const ADMIN_USING_DEFAULT_PASSWORD = env.admin.enabled && env.admin.password === '123456';
+
+/**
  * 课堂码 TTL：2 小时，且下课时立即失效（设计方案 §7.3）
  */
 export const CLASS_CODE_TTL_SECONDS = 2 * 60 * 60;
-
 /**
  * 学生课堂令牌 TTL：短时效会话凭证，不是长期身份（C9）
  */
@@ -126,6 +146,12 @@ export function assertProductionConfig(): void {
     warnings.push(
       'OBJECT_STORE_DRIVER 不是 s3 —— 作品与课件会存在容器本地卷里。' +
         '单机部署可以先用着，多实例或换机器前请接入腾讯云 COS。',
+    );
+  }
+  if (ADMIN_USING_DEFAULT_PASSWORD) {
+    warnings.push(
+      '后台占位账号还在用开发默认口令（admin / 123456）。' +
+        '正式使用前请设 ADMIN_PASSWORD=<自己的口令>；要彻底关掉这个账号则设 ADMIN_ENABLED=false。',
     );
   }
 

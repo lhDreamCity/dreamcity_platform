@@ -63,13 +63,20 @@ async function main() {
   console.log(`\n梦之城平台 · 端到端冒烟测试 → ${BASE}\n`);
 
   // ── 0. 先登录讲师（课程内容是受保护资源）─────────────────
+  // 账号可以是邮箱，也可以是账号名。用环境变量指定，方便打生产环境：
+  //   STAFF_USERNAME=xxx STAFF_PASSWORD=yyy node tools/smoke-test.mjs
+  const staffUsername = process.env.STAFF_USERNAME ?? 'teacher@dreamcity.cn';
+  const staffPassword = process.env.STAFF_PASSWORD ?? 'dreamcity-demo';
   const login = await api('/api/auth/staff/login', {
     method: 'POST',
-    body: { email: 'teacher@dreamcity.cn', password: 'dreamcity-demo' },
+    body: { username: staffUsername, password: staffPassword },
   });
   if (login.status !== 200) {
     console.error(`✗ 讲师登录失败（${login.status}）：${JSON.stringify(login.body)}`);
-    console.error('  生产环境请先用 create-teacher 建账号；本地演示用 teacher@dreamcity.cn / dreamcity-demo');
+    console.error(
+      '  生产环境请先用 create-teacher 建账号，并设置 STAFF_USERNAME / STAFF_PASSWORD；' +
+        '本地演示用 teacher@dreamcity.cn / dreamcity-demo',
+    );
     process.exit(1);
   }
   const staffToken = login.body?.token;
@@ -95,7 +102,11 @@ async function main() {
   ok('细案五环节', (lesson1.body?.plan?.segments ?? []).length === 5);
 
   const plugins = await api('/api/plugins', { token: staffToken });
-  ok('3 个插件注册', plugins.status === 200 && plugins.body?.length === 3);
+  ok('插件全部注册', plugins.status === 200 && plugins.body?.length >= 4);
+  ok(
+    '3D 版变量实验室已上架',
+    (plugins.body ?? []).some((p) => p.id === 'var-lab-3d' && p.manifest?.entry === 'var-lab-3d.html'),
+  );
 
   // ── 1b. 课程内容必须受保护 ──────────────────────────────
   const anonLessons = await api('/api/lessons');

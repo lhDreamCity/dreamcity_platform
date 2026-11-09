@@ -59,9 +59,10 @@ export const COMMON = {
 /* ── 讲师端 ────────────────────────────────────────────────── */
 
 export const TEACHER = {
-  loginTitle: '讲师登录',
+  loginTitle: '后台登录',
   loginSubtitle: '梦之城 · 课堂操作系统',
-  emailPlaceholder: '邮箱',
+  /** 账号可以是邮箱，也可以是账号名 —— 服务端两种都认 */
+  usernamePlaceholder: '账号',
   passwordPlaceholder: '密码',
   login: '登录',
   logout: '退出',

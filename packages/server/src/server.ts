@@ -9,6 +9,7 @@
 
 import { buildApp } from './app.js';
 import { env, assertProductionConfig } from './env.js';
+import { ensureAdminAccount } from './lib/admin-account.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import { registerContentRoutes } from './modules/content/routes.js';
 import { registerFileRoutes } from './modules/files/routes.js';
@@ -21,6 +22,17 @@ import { registerStudentRoutes } from './modules/student/routes.js';
 assertProductionConfig();
 
 const app = await buildApp();
+
+/**
+ * 后台占位账号与 env 对齐（幂等）。
+ * 短信还没接上的时候，后台照样能进 —— 这是唯一不依赖外部服务的入口。
+ * 数据库还没迁移过就跳过，不因为这个不让服务起来。
+ */
+try {
+  await ensureAdminAccount();
+} catch (err) {
+  app.log.warn(`后台占位账号未对齐（数据库还没准备好？）：${(err as Error).message}`);
+}
 
 await registerAuthRoutes(app);
 await registerContentRoutes(app);

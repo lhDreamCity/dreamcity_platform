@@ -5,7 +5,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb, schema } from '../../db/driver.js';
 import {
@@ -18,10 +18,11 @@ import {
 import { cacheKeys, getCache } from '../../lib/cache.js';
 import { getSmsSender } from '../../lib/sms.js';
 import { rateLimit } from '../../lib/ratelimit.js';
-import { CLASS_CODE_TTL_SECONDS, env } from '../../env.js';
+import { ADMIN_USING_DEFAULT_PASSWORD, CLASS_CODE_TTL_SECONDS, env } from '../../env.js';
 
 const staffLoginSchema = z.object({
-  email: z.string().email(),
+  /** 账号：可以是邮箱，也可以是账号名（占位账号 admin / 讲师姓名） */
+  username: z.string().min(1).max(120),
   password: z.string().min(1),
 });
 
@@ -46,6 +47,18 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   /* ── 讲师 / 运营 / 管理员 ─────────────────────────────── */
 
+  /**
+   * 后台登录前的自述接口。
+   *
+   * 只回答「现在是不是还在用开发默认口令」——
+   * 用来决定登录页要不要显示账号提示。默认口令不该出现在任何页面上，
+   * 但开发阶段不显示又登不进去，两头都得顾到。
+   */
+  app.get('/api/auth/staff/config', async () => ({
+    /** true 时前端才显示「账号 admin / 密码 123456」的提示 */
+    defaultCredentialsInUse: ADMIN_USING_DEFAULT_PASSWORD,
+  }));
+
   app.post('/api/auth/staff/login', async (req, reply) => {
     // 讲师账号要防爆破
     const limit = await rateLimit('staff-login', req.ip, 10, 300);
@@ -55,17 +68,24 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
     const body = staffLoginSchema.safeParse(req.body);
     if (!body.success) {
-      return reply.code(400).send({ error: 'BAD_REQUEST', message: '邮箱或密码不对' });
+      return reply.code(400).send({ error: 'BAD_REQUEST', message: '账号或密码不对' });
     }
+    const username = body.data.username.trim();
+    // 账号可以是邮箱，也可以是账号名 / 讲师姓名 —— 都试一遍
     const rows = await db
       .select()
       .from(schema.staffUser)
-      .where(eq(schema.staffUser.email, body.data.email.toLowerCase()))
+      .where(
+        or(
+          eq(schema.staffUser.email, username.toLowerCase()),
+          eq(schema.staffUser.name, username),
+        ),
+      )
       .limit(1);
     const user = rows[0];
     if (!user || !verifyPassword(body.data.password, user.passwordHash)) {
-      // 不区分「邮箱不存在」与「密码错误」，避免账号枚举
-      return reply.code(401).send({ error: 'INVALID_CREDENTIALS', message: '邮箱或密码不对' });
+      // 不区分「账号不存在」与「密码错误」，避免账号枚举
+      return reply.code(401).send({ error: 'INVALID_CREDENTIALS', message: '账号或密码不对' });
     }
     const token = issueToken({ sub: user.id, role: 'staff' });
     return reply.send({

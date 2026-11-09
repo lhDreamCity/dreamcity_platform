@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Landing } from './landing/Landing';
 import { TeacherLogin } from './teacher/TeacherLogin';
+import { StaffGate } from './teacher/StaffGate';
 import { LessonLibrary } from './teacher/LessonLibrary';
 import { LessonPlanner } from './teacher/LessonPlanner';
 import { SessionList } from './teacher/SessionList';
@@ -20,14 +21,59 @@ export function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
 
-        {/* 讲师端 */}
-        <Route path="/teacher/login" element={<TeacherLogin />} />
-        <Route path="/teacher/lessons" element={<LessonLibrary />} />
-        <Route path="/teacher/lessons/:id" element={<LessonPlanner />} />
-        <Route path="/teacher/sessions" element={<SessionList />} />
-        <Route path="/teacher/sessions/:id" element={<Cockpit />} />
-        <Route path="/teacher/plugins" element={<PluginLibrary />} />
-        <Route path="/teacher/students" element={<StudentDirectory />} />
+        {/*
+          讲师 / 运营后台 —— 隐藏 URL。
+          落地页不提供任何入口，只能直接敲地址进来；进来还得过账号密码这一关。
+        */}
+        <Route path="/console" element={<TeacherLogin />} />
+        <Route
+          path="/console/lessons"
+          element={
+            <StaffGate>
+              <LessonLibrary />
+            </StaffGate>
+          }
+        />
+        <Route
+          path="/console/lessons/:id"
+          element={
+            <StaffGate>
+              <LessonPlanner />
+            </StaffGate>
+          }
+        />
+        <Route
+          path="/console/sessions"
+          element={
+            <StaffGate>
+              <SessionList />
+            </StaffGate>
+          }
+        />
+        <Route
+          path="/console/sessions/:id"
+          element={
+            <StaffGate>
+              <Cockpit />
+            </StaffGate>
+          }
+        />
+        <Route
+          path="/console/plugins"
+          element={
+            <StaffGate>
+              <PluginLibrary />
+            </StaffGate>
+          }
+        />
+        <Route
+          path="/console/students"
+          element={
+            <StaffGate>
+              <StudentDirectory />
+            </StaffGate>
+          }
+        />
 
         {/* 家长端 */}
         <Route path="/guardian/login" element={<GuardianLogin />} />

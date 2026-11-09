@@ -6,9 +6,15 @@
  */
 
 export { buildApp } from './app.js';
-export { env, CLASS_CODE_TTL_SECONDS, STUDENT_TOKEN_TTL_MINUTES } from './env.js';
+export {
+  env,
+  CLASS_CODE_TTL_SECONDS,
+  STUDENT_TOKEN_TTL_MINUTES,
+  ADMIN_USING_DEFAULT_PASSWORD,
+} from './env.js';
 export { getDb, schema, getMigrationClient } from './db/driver.js';
 export { runMigrations, splitStatements, createRunner } from './db/migrate.js';
+export { ensureAdminAccount, ADMIN_STAFF_ID } from './lib/admin-account.js';
 export * from './lib/auth.js';
 export * from './lib/cache.js';
 export * from './lib/storage.js';

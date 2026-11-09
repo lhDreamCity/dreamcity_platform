@@ -29,6 +29,29 @@ export function setToken(identity: Identity, token: string | null): void {
   }
 }
 
+/**
+ * 令牌是不是还有效。
+ *
+ * 只是看「在不在」不够 —— 过期令牌留在本地会让页面停在半登录状态：
+ * 界面像登进去了，接口全 401。解一下 JWT 的 exp（不校验签名，
+ * 签名是服务端的事，这里只用来决定要不要把人送回登录页）。
+ */
+export function isTokenLive(identity: Identity): boolean {
+  const token = getToken(identity);
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const payload = JSON.parse(
+      atob((parts[1] ?? '').replace(/-/g, '+').replace(/_/g, '/')),
+    ) as { exp?: number };
+    if (typeof payload.exp !== 'number') return false;
+    return payload.exp > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
