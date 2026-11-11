@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 类型检查 + 单测 + 硬约束
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  smoke:
+    name: 端到端冒烟（49 项）
+    runs-on: ubuntu-latest
+    needs: verify
+    # 冒烟要真后端：Postgres + Redis 用官方 service container 起，
+    # 跑的是生产同样的驱动（pg），不是本地的 PGlite。
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dreamcity
+          POSTGRES_PASSWORD: dreamcity
+          POSTGRES_DB: dreamcity
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U dreamcity -d dreamcity"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: production
+      SERVER_PORT: '8787'
+      DATABASE_DRIVER: pg
+      DATABASE_URL: postgres://dreamcity:dreamcity@127.0.0.1:5432/dreamcity
+      REDIS_URL: redis://127.0.0.1:6379
+      # CI 专用的假密钥，只在这次 job 里有效，够长以过生产自检
+      JWT_SECRET: ci-only-secret-never-used-in-production-0123456789
+      CORS_ORIGINS: https://platform.lhdreamcity.com
+      ADMIN_USER: ci-admin
+      ADMIN_PASSWORD: ci-admin-password-only-in-ci
+      SMS_DRIVER: log
+      SMS_DEV_CODE: '00000'
+      OBJECT_STORE_DRIVER: local
+      OBJECT_STORE_DIR: ./var/objects
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # 打包前端也走一遍 —— typecheck 覆盖不到 vite 构建
+      - run: npm run build
+      - run: npm run db:migrate
+      - run: npm run seed:content
+      - name: 起后端
+        run: |
+          mkdir -p ./var/objects
+          nohup npm run start > /tmp/server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8787/api/health >/dev/null 2>&1; then
+              echo "server up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "server did not come up"
+          tail -80 /tmp/server.log
+          exit 1
+      - name: 冒烟测试
+        env:
+          API_BASE: http://127.0.0.1:8787
+          # 讲师账号 = 后台占位账号（邮箱形式），密码与 ADMIN_PASSWORD 一致
+          STAFF_USERNAME: ci-admin@dreamcity.internal
+          STAFF_PASSWORD: ci-admin-password-only-in-ci
+          SMS_TEST_CODE: '00000'
+        run: node tools/smoke-test.mjs
+      - name: 服务端日志（失败时）
+        if: failure()
+        run: tail -120 /tmp/server.log

@@ -1,0 +1,60 @@
+name: Deploy
+
+# CI 全绿后才部署；也可以手动触发。
+on:
+  workflow_run:
+    workflows: ['CI']
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 送到服务器并重建
+    # workflow_run 里用 head_sha，保证部署的就是刚跑完 CI 的那个提交
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: 打包（只含 git 跟踪的文件，.env / node_modules / var 都不在内）
+        run: git archive --format=tar.gz --output=/tmp/dreamcity-deploy.tar.gz HEAD
+      - name: 传到服务器并部署
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 主机密钥是钉死的，不用 ssh-keyscan（那是第一次连接才可信的来源）
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          echo "▸ 发送代码包到 $DEPLOY_USER@$DEPLOY_HOST …"
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=yes \
+              -o BatchMode=yes \
+              -o IdentitiesOnly=yes \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" 'bash -s' \
+              < /tmp/dreamcity-deploy.tar.gz
+      - name: 线上验收
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            if curl -fsS https://platform.lhdreamcity.com/api/health; then
+              echo
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "线上健康检查没通过" >&2
+          exit 1
