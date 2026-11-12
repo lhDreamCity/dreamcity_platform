@@ -81,7 +81,10 @@ jobs:
       # 打包前端也走一遍 —— typecheck 覆盖不到 vite 构建
       - run: npm run build
       - run: npm run db:migrate
-      - run: npm run seed:content
+      # 注意：这里必须用 seed（含演示数据），不能用 seed:content（= --no-demo）。
+      # 冒烟测试的 [3]–[8] 段依赖演示学生 stu_demo_xiaoyu / 演示家长 13800000001，
+      # 不种演示数据的话整段会空跑。CI 用的是一次性容器，种进去也带不走。
+      - run: npm run seed
       - name: 起后端
         env:
           NODE_ENV: production

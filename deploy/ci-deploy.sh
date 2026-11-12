@@ -33,6 +33,20 @@ if [ ! -f "$APP_DIR/.env" ]; then
   exit 1
 fi
 
+# .env 里这几项缺一个，docker compose 就会拿默认值或者直接报错，
+# 与其让 compose 报一句看不懂的，不如在这里说清楚缺什么。
+missing=""
+for key in POSTGRES_PASSWORD REDIS_PASSWORD JWT_SECRET ADMIN_PASSWORD; do
+  if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$APP_DIR/.env"; then
+    missing="$missing $key"
+  fi
+done
+if [ -n "$missing" ]; then
+  echo "✗ $APP_DIR/.env 缺少这些必填项：$missing —— 部署中止" >&2
+  rm -f "$STAGE"
+  exit 1
+fi
+
 echo "▸ 解压到暂存目录…"
 STAGE_DIR="$(mktemp -d /tmp/dreamcity-stage-XXXXXX)"
 tar -xzf "$STAGE" -C "$STAGE_DIR"

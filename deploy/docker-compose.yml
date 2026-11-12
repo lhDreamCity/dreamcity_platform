@@ -67,6 +67,13 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必须设置}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://platform.lhdreamcity.com}
       TOKEN_TTL_MINUTES: "720"
+      # 后台占位账号（讲师 / 运营 / 管理员）。
+      # ⚠ 必须显式传进去：容器里没有 .env，env.ts 读不到主机上的 .env，
+      # 不传就会退回开发默认口令 admin / 123456 —— 那等于给后台留了把公开钥匙。
+      # ADMIN_PASSWORD 是必填项（: 问号），缺了就让部署直接失败，而不是悄悄用默认口令。
+      ADMIN_ENABLED: ${ADMIN_ENABLED:-true}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD 必须设置（正式口令，不能是 123456）}
       # 作品与课件：先落本地卷，接 COS 只需改这两项 + 补 S3_* 环境变量
       OBJECT_STORE_DRIVER: ${OBJECT_STORE_DRIVER:-local}
       OBJECT_STORE_DIR: /app/var/objects
