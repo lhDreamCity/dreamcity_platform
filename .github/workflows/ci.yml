@@ -53,7 +53,11 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      NODE_ENV: production
+      # 注意：这里不要设 NODE_ENV=production。
+      # npm 的 omit 默认值会跟着 NODE_ENV 走 —— NODE_ENV=production 时 omit=dev，
+      # 于是 `npm ci` 根本不装 devDependencies，vite/typescript/vitest 全都不在，
+      # 紧接着的 `npm run build` 会以 "vite: not found" 立刻死掉。
+      # 生产模式只加在真正起后端的那一步上。
       SERVER_PORT: '8787'
       DATABASE_DRIVER: pg
       DATABASE_URL: postgres://dreamcity:dreamcity@127.0.0.1:5432/dreamcity
@@ -79,6 +83,8 @@ jobs:
       - run: npm run db:migrate
       - run: npm run seed:content
       - name: 起后端
+        env:
+          NODE_ENV: production
         run: |
           mkdir -p ./var/objects
           nohup npm run start > /tmp/server.log 2>&1 &
@@ -102,4 +108,4 @@ jobs:
         run: node tools/smoke-test.mjs
       - name: 服务端日志（失败时）
         if: failure()
-        run: tail -120 /tmp/server.log
+        run: tail -120 /tmp/server.log || true
