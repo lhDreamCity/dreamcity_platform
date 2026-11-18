@@ -33,23 +33,32 @@ if [ ! -f "$APP_DIR/.env" ]; then
   exit 1
 fi
 
-# .env 里这几项缺一个，docker compose 就会拿默认值或者直接报错，
-# 与其让 compose 报一句看不懂的，不如在这里说清楚缺什么。
-missing=""
-for key in POSTGRES_PASSWORD REDIS_PASSWORD JWT_SECRET ADMIN_PASSWORD; do
-  if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$APP_DIR/.env"; then
-    missing="$missing $key"
-  fi
-done
-if [ -n "$missing" ]; then
-  echo "✗ $APP_DIR/.env 缺少这些必填项：$missing —— 部署中止" >&2
-  rm -f "$STAGE"
-  exit 1
-fi
-
 echo "▸ 解压到暂存目录…"
 STAGE_DIR="$(mktemp -d /tmp/dreamcity-stage-XXXXXX)"
 tar -xzf "$STAGE" -C "$STAGE_DIR"
+
+# .env 体检：必填项缺失、同名变量重复、SMS_DRIVER=tencent 时短信配置不全。
+#
+# 逻辑放在 deploy/check-env.mjs 里（Node 写的，能在本机跑测试验证），
+# 这里只负责调用并把失败原因说清楚。
+#
+# 为什么值得单独查：
+#  · 服务端在 SMS_DRIVER=tencent 但缺项时会拒绝启动 —— 那时候容器起不来，
+#    平台整体不可用（讲师端也进不去）。部署前拦住，好过上线后才发现。
+#  · 同名变量重复时后者覆盖前者，于是「我改了怎么没生效」。
+#
+# ⚠ 用暂存目录里的版本（$STAGE_DIR），不是 $APP_DIR 里那份 ——
+#   部署时服务器上的代码还是上一版，新版检查器要跟着这次代码包一起来。
+if [ ! -f "$STAGE_DIR/deploy/check-env.mjs" ]; then
+  echo "✗ 代码包里缺少 deploy/check-env.mjs —— 部署中止" >&2
+  rm -f "$STAGE"; rm -rf "$STAGE_DIR"
+  exit 1
+fi
+if ! node "$STAGE_DIR/deploy/check-env.mjs" "$APP_DIR/.env"; then
+  echo "✗ .env 配置检查未通过 —— 部署中止" >&2
+  rm -f "$STAGE"; rm -rf "$STAGE_DIR"
+  exit 1
+fi
 
 # 有 rsync 就用 rsync 覆盖，顺手删掉仓库里已经删掉的文件；
 # .env / var / node_modules 受保护，不会被动。没有 rsync 就退回覆盖式解压。

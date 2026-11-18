@@ -11,3 +11,12 @@ coverage/
 _research/
 *.tar.gz
 .claude/
+
+# ⚠ 含腾讯云短信密钥的文件 —— 绝不能进仓库（仓库是 public，推上去就是公开泄露）
+# 本地留着记账号信息，仓库里只放不含密钥的指引版本
+云服务厂商信息汇总.txt
+
+# 通用的密钥文件兜底
+*.secret
+*.key
+*_secret.txt
