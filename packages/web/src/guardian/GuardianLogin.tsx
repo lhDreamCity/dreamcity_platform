@@ -8,6 +8,8 @@ export function GuardianLogin() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
+  /** 服务端是不是开发模式（验证码只进日志，没有真发短信） */
+  const [dev, setDev] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,7 +18,11 @@ export function GuardianLogin() {
     setBusy(true);
     setError('');
     try {
-      await api('/api/auth/guardian/send-code', { method: 'POST', body: { phone } });
+      const res = await api<{ dev?: boolean }>('/api/auth/guardian/send-code', {
+        method: 'POST',
+        body: { phone },
+      });
+      setDev(res.dev === true);
       setSent(true);
       setCountdown(60);
       const timer = setInterval(() => {
@@ -29,6 +35,8 @@ export function GuardianLogin() {
         });
       }, 1000);
     } catch (err) {
+      // 发送失败时要把 sent 清掉：不然「已发出」和错误提示会同时出现。
+      setSent(false);
       setError((err as Error).message);
     } finally {
       setBusy(false);
@@ -105,7 +113,7 @@ export function GuardianLogin() {
           ) : null}
           {sent && !error ? (
             <div className="notice" style={{ marginBottom: 12 }}>
-              验证码已经发出（开发模式会打到服务端控制台，验证码是 00000）
+              {dev ? GUARDIAN.codeSentDev : GUARDIAN.codeSent}
             </div>
           ) : null}
           <button className="btn block" type="submit" disabled={busy}>

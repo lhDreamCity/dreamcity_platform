@@ -246,6 +246,8 @@ async function main() {
     });
   }
   ok('验证码发送成功', sendCode.status === 200, detail(sendCode));
+  // dev 标记：SMS_DRIVER=log 时为 true（验证码只进日志）。前端据此给不同提示。
+  ok('验证码发送响应带 dev 标记', sendCode.status === 200 && typeof sendCode.body?.dev === 'boolean', detail(sendCode));
 
   // 开发模式（SMS_DRIVER=log）验证码固定，可用 SMS_TEST_CODE 覆盖
   const devCode = process.env.SMS_TEST_CODE ?? '00000';

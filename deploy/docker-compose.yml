@@ -78,7 +78,22 @@ services:
       OBJECT_STORE_DRIVER: ${OBJECT_STORE_DRIVER:-local}
       OBJECT_STORE_DIR: /app/var/objects
       # 家长短信：未接腾讯云前用 log（验证码打日志），生产务必换成 tencent
+      #
+      # ⚠ 必须显式传进去：容器里没有 .env，env.ts 读不到主机上的 .env。
+      #    漏传的表现是「短信发不出去但服务看着正常」——
+      #    所以 driver=tencent 时下面这几项缺一个，部署就该失败。
       SMS_DRIVER: ${SMS_DRIVER:-log}
+      SMS_APP_ID: ${SMS_APP_ID:-}
+      SMS_SECRET_ID: ${SMS_SECRET_ID:-}
+      SMS_SECRET_KEY: ${SMS_SECRET_KEY:-}
+      SMS_SIGN_NAME: ${SMS_SIGN_NAME:-}
+      SMS_TEMPLATE_CODE: ${SMS_TEMPLATE_CODE:-}
+      # 模板参数个数：验证码类模板通常 1 个（{1}=验证码），通用类 2 个（{1}{2}）
+      SMS_TEMPLATE_PARAM_COUNT: ${SMS_TEMPLATE_PARAM_COUNT:-1}
+      # 验证码有效期（分钟）：模板文案里的数字要和它一致
+      SMS_CODE_TTL_MINUTES: ${SMS_CODE_TTL_MINUTES:-5}
+      SMS_IP_HOURLY_LIMIT: ${SMS_IP_HOURLY_LIMIT:-300}
+      SMS_PHONE_HOURLY_LIMIT: ${SMS_PHONE_HOURLY_LIMIT:-5}
     volumes:
       - objects:/app/var/objects
     networks: [platform, proxy]

@@ -13,10 +13,11 @@ import {
   generateSmsCode,
   issueStudentToken,
   issueToken,
+  maskPhone,
   verifyPassword,
 } from '../../lib/auth.js';
 import { cacheKeys, getCache } from '../../lib/cache.js';
-import { getSmsSender } from '../../lib/sms.js';
+import { getSmsSender, SmsSendError } from '../../lib/sms.js';
 import { rateLimit } from '../../lib/ratelimit.js';
 import { ADMIN_USING_DEFAULT_PASSWORD, CLASS_CODE_TTL_SECONDS, env } from '../../env.js';
 
@@ -114,10 +115,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(429).send({ error: 'TOO_FREQUENT', message: '刚发过啦，等一分钟再试' });
     }
     // 手机号与 IP 双重限流，防止有人拿别人的号轰炸。
-    // IP 的额度要够一整个教室用 —— 一个班几十个手机号共用同一个公网 IP，
+    // IP 的额度要够一整个教室用 —— 一屋子的家长共用同一个公网 IP，
     // 按 10 次/小时会把全班一起挡在门外。
-    const byPhone = await rateLimit('sms-send-phone', phone, 5, 3600);
-    const byIp = await rateLimit('sms-send-ip', req.ip, 60, 3600);
+    const byPhone = await rateLimit('sms-send-phone', phone, env.sms.phoneHourlyLimit, 3600);
+    const byIp = await rateLimit('sms-send-ip', req.ip, env.sms.ipHourlyLimit, 3600);
     if (!byPhone.allowed || !byIp.allowed) {
       reply.header('Retry-After', String(byPhone.retryAfter));
       return reply.code(429).send({ error: 'TOO_FREQUENT', message: '今天发得有点多，明天再试' });
@@ -128,10 +129,37 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         ? // 开发模式固定验证码，便于自动化测试；生产走真实随机码
           (process.env.SMS_DEV_CODE ?? '00000')
         : generateSmsCode();
-    await cache.set(cacheKeys.smsCode(phone), code, 5 * 60);
+
+    // 先发短信，成功了再把验证码写进缓存。
+    //
+    // 反过来的话（先写缓存再发）有两个坏处：
+    //  · 发送失败时缓存里留着一个家长永远收不到的验证码，
+    //    用户输什么都提示「验证码不对」，却查不出真实原因；
+    //  · 失败也占掉了 60 秒冷却，家长得干等一分钟才能重试。
+    try {
+      await getSmsSender().sendVerificationCode(phone, code);
+    } catch (err) {
+      // instanceof 而不是类型断言：万一抛出的是别的东西，断言会把它伪装成已知错误。
+      const e = err instanceof SmsSendError ? err : null;
+      // 原因记进服务端日志（含腾讯云错误码），前端只给一句人话。
+      app.log.error(
+        {
+          phone: maskPhone(phone),
+          providerCode: e?.providerCode,
+          err: e?.message ?? String(err),
+        },
+        '短信发送失败',
+      );
+      return reply.code(502).send({
+        error: 'SMS_SEND_FAILED',
+        message: '验证码没发出去，稍等一会儿再试',
+      });
+    }
+
+    await cache.set(cacheKeys.smsCode(phone), code, env.sms.codeTtlMinutes * 60);
     await cache.set(sentKey, '1', env.sms.rateLimitSeconds);
-    await getSmsSender().sendVerificationCode(phone, code);
-    return reply.send({ ok: true });
+    // dev=true 表示验证码只进了服务端日志（SMS_DRIVER=log），前端据此给不同提示。
+    return reply.send({ ok: true, dev: env.sms.driver === 'log' });
   });
 
   app.post('/api/auth/guardian/login', async (req, reply) => {

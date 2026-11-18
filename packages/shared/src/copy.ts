@@ -144,6 +144,12 @@ export const GUARDIAN = {
   codePlaceholder: '验证码',
   sendCode: '获取验证码',
   resendIn: '秒后重发',
+  /** 验证码已发出（真发短信）*/
+  codeSent: '验证码已经发出，请留意手机短信',
+  /** 开发模式（SMS_DRIVER=log）：验证码只进服务端日志 */
+  codeSentDev: '验证码已经发出（开发模式：验证码在服务端日志里，是 00000）',
+  /** 发送失败 */
+  codeSendFailed: '验证码没发出去，稍等一会儿再试',
   login: '登录',
   logout: '退出',
   timelineTitle: '孩子的课堂时间线',

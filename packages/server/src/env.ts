@@ -79,10 +79,36 @@ export const env = {
     driver: str('SMS_DRIVER', 'log') as 'log' | 'tencent',
     appId: str('SMS_APP_ID', ''),
     secretId: str('SMS_SECRET_ID', ''),
+    secretKey: str('SMS_SECRET_KEY', ''),
     signName: str('SMS_SIGN_NAME', ''),
     templateCode: str('SMS_TEMPLATE_CODE', ''),
+    /**
+     * 模板参数个数。
+     *
+     * 腾讯云要求「参数个数 = 模板变量个数」：
+     *  · 验证码类模板通常只有 {1}（验证码），有效期写死在文案里 → 1
+     *  · 通用/通知类模板常是 {1}{2}（验证码、有效期）→ 2
+     */
+    templateParamCount: num('SMS_TEMPLATE_PARAM_COUNT', 1),
+    /** 验证码有效期（分钟）。既是模板里的文案数字，也是缓存里的过期时间 */
+    codeTtlMinutes: num('SMS_CODE_TTL_MINUTES', 5),
+    /** 腾讯云短信区域。国内短信固定 ap-guangzhou */
+    region: str('SMS_REGION', 'ap-guangzhou'),
     /** 同一手机号两次发送的最小间隔（秒） */
     rateLimitSeconds: num('SMS_RATE_LIMIT_SECONDS', 60),
+    /**
+     * 同一手机号每小时最多发多少条。
+     * 腾讯云自己的限制是 100 条/小时、300 条/天，我们留得比它严（防刷）。
+     */
+    phoneHourlyLimit: num('SMS_PHONE_HOURLY_LIMIT', 5),
+    /**
+     * 同一 IP 每小时最多发多少条。
+     *
+     * ⚠ 一个教室的家长共用同一个公网出口 IP，所以这个值要够一整个学校用。
+     * 腾讯云那边的上限是同一 IP 每分钟 100 条（= 6000 条/小时），
+     * 我们 300 条/小时远在它之内 —— 被卡住的话是我们自己这道闸，不是腾讯云。
+     */
+    ipHourlyLimit: num('SMS_IP_HOURLY_LIMIT', 300),
   },
 
   objectStore: {
@@ -102,6 +128,23 @@ export const env = {
  * 开发阶段允许，真上业务前必须换掉 —— 换法：设 ADMIN_PASSWORD。
  */
 export const ADMIN_USING_DEFAULT_PASSWORD = env.admin.enabled && env.admin.password === '123456';
+
+/**
+ * 短信驱动是 tencent 时，配置缺了哪几项。
+ *
+ * 缺项 = 短信一条都发不出去，但服务照样起来、家长照样收到「验证码已发送」。
+ * 所以这个检查放在启动自检里，缺了就拒绝启动。
+ */
+export function missingSmsConfig(): string[] {
+  if (env.sms.driver !== 'tencent') return [];
+  const missing: string[] = [];
+  if (!env.sms.appId) missing.push('SMS_APP_ID');
+  if (!env.sms.secretId) missing.push('SMS_SECRET_ID');
+  if (!env.sms.secretKey) missing.push('SMS_SECRET_KEY');
+  if (!env.sms.signName) missing.push('SMS_SIGN_NAME');
+  if (!env.sms.templateCode) missing.push('SMS_TEMPLATE_CODE');
+  return missing;
+}
 
 /**
  * 课堂码 TTL：2 小时，且下课时立即失效（设计方案 §7.3）
@@ -141,6 +184,13 @@ export function assertProductionConfig(): void {
       'SMS_DRIVER 不是 tencent —— 家长登录验证码只会打到服务端日志里，真实家长用不了。' +
         '上线前请接入腾讯云短信。',
     );
+  } else {
+    // 配了 tencent 却缺项 = 短信一条都发不出去，但启动看着一切正常。
+    // 这属于「服务起来了但功能是坏的」，比不配更危险 —— 缺项直接拒绝启动。
+    const missing = missingSmsConfig();
+    if (missing.length > 0) {
+      fatal.push(`SMS_DRIVER=tencent 但缺少这些配置：${missing.join('、')}`);
+    }
   }
   if (env.objectStore.driver !== 's3') {
     warnings.push(
