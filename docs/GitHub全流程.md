@@ -260,17 +260,15 @@ devDependencies，vite / typescript / vitest 全都不在容器里，`npm run bu
 - `ci.yml` 里「服务端日志（失败时）」那步在服务没起来时 `tail` 一个不存在的文件，
   自己也会失败、把真正的原因盖掉 —— 加了 `|| true`。
 
-**关于日志权限**：Actions 的完整日志必须登录才能读（API 403），但
-「每个 job / 每一步的成败结论」用匿名 API 就能读（仓库是公开的）：
+**关于日志权限**：Actions 的完整日志必须登录才能读（API 403），
+「每个 job / 每一步的成败结论」也有专门的脚本（仓库改成 private 后必须带 token）：
 
 ```powershell
-$h=@{'User-Agent'='ps'}
-$run=(Invoke-RestMethod "https://api.github.com/repos/lhDreamCity/dreamcity_platform/actions/runs?per_page=3" -Headers $h).workflow_runs
-$jobs=(Invoke-RestMethod "https://api.github.com/repos/lhDreamCity/dreamcity_platform/actions/runs/$($run[1].id)/jobs" -Headers $h).jobs
-$jobs | ForEach-Object { "$($_.name) => $($_.conclusion)"; $_.steps | ForEach-Object { "   $($_.name) => $($_.conclusion)" } }
+node D:\dreamcity_platform\tools\ci-status.mjs --jobs
 ```
 
-哪一步挂了、后面哪些被 skipped，看这个就够 —— 不用等日志。
+它优先读 `GH_TOKEN` / `GITHUB_TOKEN` 环境变量，没有就退回 `gh auth token`
+（`gh` 登录过的话它自己知道）。哪一步挂了、后面哪些被 skipped，看这个就够 —— 不用等日志。
 
 ---
 
@@ -287,11 +285,21 @@ $jobs | ForEach-Object { "$($_.name) => $($_.conclusion)"; $_.steps | ForEach-Ob
 > 镜像不再是空仓库，这条退路现在是通的。Gitee 还能给服务器提供一条**完全绕开 GitHub**
 > 的部署路线：Actions 只负责验证，部署改成服务器自己 `git pull gitee` + 重建。
 
-### 仓库可见性：现在是 public
+### 仓库可见性：已改为 private（2026-11-18）
 
-`lhDreamCity/dreamcity_platform` 建的时候设成了 **Public**（2026-11-11），
-所以匿名 API 就能读到 Actions 的状态与结论（完整日志仍然要登录）。
-代码本身没有密钥，但里面写着生产域名、部署脚本与基础设施细节。
+`lhDreamCity/dreamcity_platform` 建的时候是 Public（2026-11-11），
+2026-11-18 改成了 **Private**。
 
-要改成 Private 的话：仓库 → Settings → General → Danger Zone → Change visibility。
-注意改完以后上面那段「匿名读 job 结论」的脚本会 404，得配一个 token 才能读。
+理由：代码里写着生产域名、部署脚本与基础设施细节；虽然密钥已排除在外，
+但私有更稳妥。
+
+改动的连带影响：
+
+| 原来 | 现在 |
+|---|---|
+| 匿名 API 就能读 Actions 状态 | 要带 token —— 用 `tools/ci-status.mjs` |
+| Gitee 镜像能匿名访问 | Gitee 镜像仍是 public（那是**代码副本**，不含密钥） |
+
+> ⚠️ **Gitee 镜像要注意**：它是 public 的代码副本。
+> 仓库里已排除密钥（`云服务厂商信息汇总.txt` 已 `.gitignore`），
+> 但如果你以后往仓库里加任何凭证，记得两个远端都要先确认。
